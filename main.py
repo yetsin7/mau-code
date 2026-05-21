@@ -1,31 +1,32 @@
-import ollama # Importar el modelo de Ollama
-import json # Para leer órdenes del modelo en formato JSON.
-from tools.crear_archivo import crear_archivo_texto # Importar Tools Calling.
-from rich.console import Console # Llamamos a Rich para hacer la terminal más bonita.
+import json  # Para leer órdenes del modelo en formato JSON.
+
+import ollama  # Cliente para comunicarnos con Ollama.
+
+from terminal.input_handler import read_user_input  # Entrada del usuario con Prompt Toolkit.
+from terminal.renderer import console  # Consola visual con Rich.
+from tools.filesystem.create_file import create_file  # Tool para crear archivos.
+from terminal.session import start_terminal_session  # Loop principal de la sesión.
 
 
-# Creamos una instancia de la consola de Rich.
-console = Console()
-
-# Nombre EXACTO del modelo de Ollama que queremos usar.
-MODELO = "qwen2.5-coder:7b"
+# Nombre exacto del modelo instalado en Ollama.
+MODEL_NAME = "qwen2.5-coder:7b"
 
 
-# PROMPT DE HERRAMIENTAS (Tool Calling).
+# Prompt principal del sistema.
 SYSTEM_PROMPT = """
-Eres Mau Code, un asistente útil y amigable de programación senior.
+Eres MauCode, un asistente útil y amigable de programación senior.
 
 Puedes conversar normalmente.
 
-Si el usuario te pide crear un archivo de texto, debes responder SOLO con JSON válido.
+Si el usuario te pide crear un archivo, script o archivo de código, debes responder SOLO con JSON válido.
 
 Herramientas disponibles:
 
 {
-    "accion": "crear_archivo_texto",
-    "carpeta": "RUTA_EXACTA_DE_LA_CARPETA",
-    "nombre_archivo": "NOMBRE_DEL_ARCHIVO.txt",
-    "contenido": "TEXTO_QUE_SE_GUARDARÁ"
+    "action": "create_file",
+    "folder": "RUTA_EXACTA_DE_LA_CARPETA",
+    "file_name": "NOMBRE_DEL_ARCHIVO_CON_EXTENSION",
+    "content": "TEXTO_QUE_SE_GUARDARÁ"
 }
 
 Reglas:
@@ -35,18 +36,26 @@ Reglas:
 - Si el usuario no indica carpeta, pregunta cuál carpeta debe usar.
 - No uses markdown cuando respondas con JSON.
 - No expliques nada cuando respondas con JSON.
+- Si el usuario pide código Python, usa extensión .py.
+- Si el usuario pide HTML, CSS o JavaScript, usa la extensión correcta.
+- Cuando el contenido sea código, conserva saltos de línea e indentación usando \\n correctamente.
+- Nunca minifiques código.
+- Siempre usa formato legible y profesional.
+- Conserva líneas vacías entre funciones, clases y bloques.
+- Usa indentación correcta de 4 espacios en Python.
+- Devuelve el contenido exactamente como debería verse dentro del archivo real.
+- No comprimas múltiples instrucciones en una sola línea.
 """
 
 
-# Creamos una función para enviar mensajes al modelo de Ollama.
-def preguntar_a_ollama(mensaje_usuario: str) -> str:
+def ask_ollama(user_message: str) -> str:
     """
-    Envía un mensaje al modelo de Ollama
-    y devuelve únicamente el contenido de la respuesta.
+    Envía un mensaje del usuario al modelo de Ollama
+    y devuelve únicamente el contenido textual de la respuesta.
     """
 
-    respuesta = ollama.chat(
-        model=MODELO,
+    response = ollama.chat(
+        model=MODEL_NAME,
         messages=[
             {
                 "role": "system",
@@ -54,124 +63,113 @@ def preguntar_a_ollama(mensaje_usuario: str) -> str:
             },
             {
                 "role": "user",
-                "content": mensaje_usuario,
+                "content": user_message,
             },
         ],
     )
 
-    # Extraemos solamente el texto de respuesta.
-    return respuesta['message']['content']
+    return response["message"]["content"]
 
 
-# Función para leer JSON.
-def intentar_leer_json(texto: str):
+def try_parse_json_actions(text: str):
     """
-    Intenta convertir un texto JSON
-    en datos válidos de Python.
+    Intenta convertir la respuesta del modelo en una lista de acciones JSON.
 
-    Si no puede convertirlo, devuelve None.
-    """
-
-    try:
-        return json.loads(texto)
-
-    except json.JSONDecodeError:
-        return None
-
-
-
-# Ejecutor de Tool Calling.
-def manejar_respuesta_del_modelo(respuesta_modelo: str):
-    """
-    Decide si la respuesta del modelo
-    es texto normal o una instrucción
-    para ejecutar una tool.
+    Soporta:
+    - un solo JSON
+    - varios JSON seguidos
+    - JSON envuelto en ```json ... ```
     """
 
-    datos = intentar_leer_json(respuesta_modelo)
+    text = text.strip()
 
-    # Si no es JSON, lo mostramos como texto normal.
-    if datos is None:
+    # Algunos modelos responden con bloques markdown.
+    # Quitamos el inicio ```json si existe.
+    if text.startswith("```json"):
+        text = text.replace("```json", "", 1).strip()
 
+    # Quitamos el cierre ``` si existe.
+    if text.endswith("```"):
+        text = text[:-3].strip()
+
+    decoder = json.JSONDecoder()
+    actions = []
+    index = 0
+
+    while index < len(text):
+        try:
+            action, next_index = decoder.raw_decode(text[index:])
+            actions.append(action)
+            index += next_index
+
+            # Saltamos espacios y saltos de línea entre varios JSON.
+            while index < len(text) and text[index].isspace():
+                index += 1
+
+        except json.JSONDecodeError:
+            return None
+
+    return actions
+
+
+def handle_model_response(model_response: str):
+    """
+    Decide si la respuesta del modelo es texto normal
+    o una lista de instrucciones para ejecutar tools.
+    """
+
+    actions = try_parse_json_actions(model_response)
+
+    # Si no se pudo interpretar como JSON, es una respuesta normal.
+    if actions is None:
         console.print("\n[bold green]MauCode: >[/bold green]")
-        console.print(respuesta_modelo)
+        console.print(model_response)
         console.print()
-
-        return
-    
-    # Si es JSON, verificamos la acción.
-    accion = datos.get("accion")
-
-    if accion == "crear_archivo_texto":        
-
-        carpeta = datos.get("carpeta", "")
-        nombre_archivo = datos.get("nombre_archivo", "")
-        contenido = datos.get("contenido", "")
-
-        console.print("\n[bold yellow]MauCode quiere ejecutar esta acción:  >[/bold yellow]")
-
-        console.print(f"[cyan]Tool:[/cyan] crear_archivo_texto")
-        console.print(f"[cyan]Carpeta:[/cyan] {carpeta}")
-        console.print(f"[cyan]Nombre del archivo:[/cyan] {nombre_archivo}")
-
-        confirmar = input("\n¿Quieres ejecutar esta acción? (si/no): ")
-        
-        if confirmar.lower() != "si":
-
-            console.print("\n[bold red]Acción cancelada por el usuario.[/bold red]\n")
-            return
-        
-        resultado = crear_archivo_texto(
-            carpeta = carpeta,
-            nombre_archivo = nombre_archivo,
-            contenido = contenido
-        )
-
-        console.print(f"\n[bold green]Resultado: >[/bold green]")
-        console.print(resultado)
-        console.print()
-
         return
 
-    console.print("\n[bold red]La acción solicitada aún no existe. >[/bold red]")
-    console.print(datos)
+    # Recorremos todas las acciones que el modelo haya solicitado.
+    for action in actions:
+
+        # Tool: create_file
+        if action.get("action") == "create_file":
+            folder = action.get("folder", "")
+            file_name = action.get("file_name", "")
+            content = action.get("content", "")
+
+            console.print(
+                "\n[bold yellow]MauCode quiere ejecutar esta acción: >[/bold yellow]"
+            )
+            console.print("[cyan]Tool:[/cyan] create_file")
+            console.print(f"[cyan]Carpeta:[/cyan] {folder}")
+            console.print(f"[cyan]Nombre del archivo:[/cyan] {file_name}")
+
+            confirm = input("\n¿Quieres ejecutar esta acción? (si/no): ")
+
+            if confirm.lower() != "si":
+                console.print(
+                    "\n[bold red]Acción cancelada por el usuario.[/bold red]\n"
+                )
+                continue
+
+            result = create_file(
+                folder=folder,
+                file_name=file_name,
+                content=content,
+            )
+
+            console.print("\n[bold green]Resultado: >[/bold green]")
+            console.print(result)
+            console.print()
+
+            continue
+
+        # Si la acción todavía no está implementada.
+        console.print("\n[bold red]La acción solicitada aún no existe. >[/bold red]")
+        console.print(action)
+        console.print()
 
 
-
-# Función principal del programa.
-def iniciar_chat():
-    """
-    Inicia el chat principal de MauCode
-    dentro de la terminal.
-    """
-
-    console.print(
-        "[bold green]¡Hola! Soy MauCode, tu asistente de programación senior. ¿En qué puedo ayudarte hoy?[/bold green]"
-    )
-
-    console.print(
-        "[bold yellow]Escribe 'salir' para terminar el chat.[/bold yellow]"
-    )
-
-    while True:
-
-        # Esperamos la entrada del usuario.
-        mensaje = input("[bold cyan]Tú:[/bold cyan] ")
-
-        # Comando para salir del chat.
-        if mensaje.lower() == "salir":
-
-            console.print("[bold red]¡Hasta luego![/bold red]")
-            break
-
-        # Mandamos el mensaje al modelo.
-        respuesta = preguntar_a_ollama(mensaje)
-
-        # Revisamos si respondió texto normal o pidió ejecutar una tool.
-        manejar_respuesta_del_modelo(respuesta)
-
-
-# Punto de inicio del programa.
 if __name__ == "__main__":
-    iniciar_chat()
-
+    start_terminal_session(
+        ask_ollama = ask_ollama, 
+        handle_model_response = handle_model_response,)

@@ -1,40 +1,101 @@
-# Mau Code
+Estado Actual del Proyecto
 
-Mau Code es un proyecto experimental enfocado en crear un sistema CLI conversacional capaz de interactuar directamente con el modelo Qwen2.5-Coder desde la terminal.
+Esta es la primera versión funcional de MauCode.
 
-## Estado actual del proyecto
-
-Esta es la primera versión funcional del proyecto.
 Actualmente, el sistema permite:
 
-* Mantener conversaciones directamente desde la terminal.
-* Enviar texto al modelo y recibir respuestas en tiempo real.
-* Utilizar el modelo mediante una interfaz CLI simple y ligera.
+Mantener conversaciones desde la terminal.
+Enviar prompts al modelo y recibir respuestas en tiempo real.
+Utilizar modelos locales mediante Ollama.
+Detectar respuestas en formato JSON.
+Ejecutar el primer sistema básico de Tool Calling.
+Crear archivos .txt desde instrucciones conversacionales.
+Solicitar confirmación del usuario antes de ejecutar acciones.
+Trabajar con una arquitectura modular inicial basada en tools.
+Tool Calling Actual
 
-## Limitaciones actuales
+MauCode ya cuenta con un primer sistema de tools inspirado en agentes tipo Claude Code.
 
-Por ahora, el proyecto todavía se encuentra en una etapa temprana de desarrollo y aún no incluye:
+Flujo actual:
 
-* Interfaz gráfica.
-* Sistema de tool calling.
-* Memoria conversacional avanzada.
-* Agentes o automatizaciones.
-* Sistema modular.
-* Gestión de contexto compleja.
-* Streaming avanzado o multiagente.
+Usuario
+↓
+Modelo propone acción en JSON
+↓
+MauCode valida la respuesta
+↓
+Usuario confirma ejecución
+↓
+Python ejecuta la tool
 
-Actualmente, el objetivo principal es construir una base sólida para la comunicación conversacional entre el usuario y el modelo.
+Actualmente existe la siguiente tool:
 
-## Objetivo del proyecto
+crear_archivo_texto
+Arquitectura Actual
+mau-code/
+│
+├── main.py
+│
+├── tools/
+│   └── crear_archivo.py
+│
+└── ESTRUCTURA_DESEADA.md
+Objetivo del Proyecto
 
-El objetivo a largo plazo de Mau Code es evolucionar desde un simple cliente conversacional en terminal hacia un entorno más completo para interacción con modelos de IA, integrando herramientas, automatización y capacidades avanzadas.
+El objetivo de MauCode es evolucionar desde un simple chat CLI hacia un agente local completo capaz de:
 
-## Tecnologías utilizadas
+utilizar herramientas
+manipular archivos
+ejecutar comandos
+trabajar con proyectos reales
+comprender contexto
+automatizar tareas
+extender capacidades mediante plugins/tools
 
-* Python
-* CLI / Terminal
-* Modelo Qwen2.5-Coder:7B
+La meta final es tener un entorno similar a:
 
-## Estado
+Claude Code
+
+pero completamente local y personalizable.
+
+Roadmap Inicial
+
+Próximas metas del proyecto:
+
+Refactorizar el sistema de tools.
+Crear un router de herramientas.
+Separar prompts del código Python.
+Agregar memoria conversacional.
+Agregar lectura y escritura de archivos.
+Ejecutar comandos de terminal.
+Crear sistema de permisos más avanzado.
+Implementar streaming de respuestas.
+Crear comando global:
+maucode
+Tecnologías Utilizadas
+Backend
+Python
+Modelos
+Ollama
+Qwen2.5-Coder:7B
+Terminal UI
+Rich
+Filosofía del Proyecto
+
+MauCode NO ejecuta acciones automáticamente.
+
+Toda acción sensible debe seguir este flujo:
+
+Modelo propone acción
+↓
+Usuario confirma
+↓
+MauCode ejecuta
+
+La seguridad y el control del usuario son prioridad.
+
+Estado
 
 🚧 Proyecto en desarrollo temprano.
+
+Actualmente el enfoque principal es construir una arquitectura sólida, modular y escalable antes de agregar funcionalidades avanzadas.
