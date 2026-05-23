@@ -1,101 +1,183 @@
-Estado Actual del Proyecto
+# MauCode
 
-Esta es la primera versión funcional de MauCode.
+MauCode es un asistente local de programacion que corre desde la terminal,
+conversa con un modelo de Ollama y ejecuta tools bajo confirmacion del usuario.
+El proyecto esta en una etapa temprana, pero ya tiene una separacion inicial
+entre la sesion de terminal, el renderizado, la entrada del usuario y el
+catalogo de tools.
 
-Actualmente, el sistema permite:
+## Estado actual
 
-Mantener conversaciones desde la terminal.
-Enviar prompts al modelo y recibir respuestas en tiempo real.
-Utilizar modelos locales mediante Ollama.
-Detectar respuestas en formato JSON.
-Ejecutar el primer sistema básico de Tool Calling.
-Crear archivos .txt desde instrucciones conversacionales.
-Solicitar confirmación del usuario antes de ejecutar acciones.
-Trabajar con una arquitectura modular inicial basada en tools.
-Tool Calling Actual
+Actualmente MauCode puede:
 
-MauCode ya cuenta con un primer sistema de tools inspirado en agentes tipo Claude Code.
+- iniciar una sesion de chat desde `main.py`;
+- enviar mensajes a Ollama usando el modelo `qwen2.5-coder:7b`;
+- renderizar respuestas con Rich;
+- leer entrada interactiva con Prompt Toolkit;
+- guardar historial local en `.maucode_history`;
+- compactar pegados multilínea en placeholders visuales antes de enviarlos al modelo;
+- detectar una o varias acciones JSON devueltas por el modelo;
+- pedir confirmacion antes de ejecutar una accion sensible;
+- crear archivos de texto o codigo mediante `tools/filesystem/create_file.py`.
 
-Flujo actual:
+La unica tool funcional conectada al flujo principal es `create_file`. Las demas
+carpetas y archivos de `tools/` existen como estructura preparada para futuras
+tools, pero varios modulos todavia estan vacios.
 
+## Requisitos
+
+MauCode depende de Python y de librerias usadas directamente por el codigo
+actual:
+
+- Python 3.13 o compatible;
+- Ollama instalado y ejecutandose localmente;
+- modelo `qwen2.5-coder:7b` disponible en Ollama;
+- paquetes de Python: `ollama`, `rich` y `prompt_toolkit`.
+
+Instalacion manual de dependencias:
+
+```bash
+pip install ollama rich prompt_toolkit
+```
+
+## Ejecucion
+
+Desde la raiz del proyecto:
+
+```bash
+python main.py
+```
+
+Para salir de la sesion escribe:
+
+```txt
+salir
+```
+
+## Estructura real del proyecto
+
+```txt
+mau-code/
+├── .maucode_history
+├── Estructura.md
+├── README.md
+├── main.py
+├── shell/
+│   ├── input_handler.py
+│   ├── paste_handler.py
+│   ├── renderer.py
+│   ├── run_python.py
+│   ├── run_terminal.py
+│   ├── session.py
+│   └── streaming.py
+└── tools/
+    ├── data/
+    │   ├── read_json.py
+    │   └── write_json.py
+    ├── filesystem/
+    │   ├── copy_file.py
+    │   ├── create_file.py
+    │   ├── create_folder.py
+    │   ├── delete_file.py
+    │   ├── delete_folder.py
+    │   ├── edit_file.py
+    │   ├── list_files.py
+    │   ├── move_file.py
+    │   ├── read_file.py
+    │   └── rename_file.py
+    ├── git/
+    │   ├── git_branch.py
+    │   ├── git_commit.py
+    │   ├── git_diff.py
+    │   └── git_status.py
+    └── search/
+        ├── search_code.py
+        └── search_text.py
+```
+
+Los directorios `__pycache__/` son artefactos generados por Python y no forman
+parte de la arquitectura fuente del proyecto.
+
+## Flujo principal
+
+```txt
 Usuario
 ↓
-Modelo propone acción en JSON
+shell.input_handler.read_user_input()
 ↓
-MauCode valida la respuesta
+main.ask_ollama()
 ↓
-Usuario confirma ejecución
+Ollama responde texto o JSON
 ↓
-Python ejecuta la tool
-
-Actualmente existe la siguiente tool:
-
-crear_archivo_texto
-Arquitectura Actual
-mau-code/
-│
-├── main.py
-│
-├── tools/
-│   └── crear_archivo.py
-│
-└── ESTRUCTURA_DESEADA.md
-Objetivo del Proyecto
-
-El objetivo de MauCode es evolucionar desde un simple chat CLI hacia un agente local completo capaz de:
-
-utilizar herramientas
-manipular archivos
-ejecutar comandos
-trabajar con proyectos reales
-comprender contexto
-automatizar tareas
-extender capacidades mediante plugins/tools
-
-La meta final es tener un entorno similar a:
-
-Claude Code
-
-pero completamente local y personalizable.
-
-Roadmap Inicial
-
-Próximas metas del proyecto:
-
-Refactorizar el sistema de tools.
-Crear un router de herramientas.
-Separar prompts del código Python.
-Agregar memoria conversacional.
-Agregar lectura y escritura de archivos.
-Ejecutar comandos de terminal.
-Crear sistema de permisos más avanzado.
-Implementar streaming de respuestas.
-Crear comando global:
-maucode
-Tecnologías Utilizadas
-Backend
-Python
-Modelos
-Ollama
-Qwen2.5-Coder:7B
-Terminal UI
-Rich
-Filosofía del Proyecto
-
-MauCode NO ejecuta acciones automáticamente.
-
-Toda acción sensible debe seguir este flujo:
-
-Modelo propone acción
+main.handle_model_response()
 ↓
-Usuario confirma
+MauCode pide confirmacion si hay accion
 ↓
-MauCode ejecuta
+tools.filesystem.create_file.create_file()
+↓
+Resultado vuelve a la terminal
+```
 
-La seguridad y el control del usuario son prioridad.
+## Modulos principales
 
-Estado
+### `main.py`
 
-🚧 Proyecto en desarrollo temprano.
+Contiene el prompt del sistema, la comunicacion con Ollama, el parser de
+acciones JSON y el despacho inicial de tools. Actualmente solo despacha la
+accion `create_file`.
 
-Actualmente el enfoque principal es construir una arquitectura sólida, modular y escalable antes de agregar funcionalidades avanzadas.
+### `shell/session.py`
+
+Inicia y mantiene el loop principal de la sesion interactiva. Lee mensajes,
+detecta el comando `salir`, envia prompts al modelo y delega el manejo de la
+respuesta.
+
+### `shell/input_handler.py`
+
+Centraliza la entrada del usuario con Prompt Toolkit. Mantiene historial local
+en `.maucode_history` y reemplaza pegados multilínea por placeholders visibles
+para que la terminal siga siendo legible.
+
+### `shell/renderer.py`
+
+Expone una instancia compartida de `rich.console.Console` para renderizar la
+salida de MauCode.
+
+### `tools/filesystem/create_file.py`
+
+Crea archivos de texto o codigo en la carpeta indicada por el usuario. Valida
+el nombre del archivo, bloquea rutas embebidas en `file_name` y permite solo
+extensiones de texto/codigo incluidas en `ALLOWED_TEXT_EXTENSIONS`.
+
+## Seguridad actual
+
+MauCode no ejecuta acciones automaticamente. El modelo puede proponer una
+accion JSON, pero el usuario debe confirmarla antes de que Python ejecute la
+tool.
+
+La tool `create_file` aplica validaciones basicas:
+
+- bloquea `..`, `/` y `\` dentro del nombre del archivo;
+- restringe las extensiones permitidas;
+- escribe contenido con codificacion UTF-8.
+
+## Limites actuales
+
+- No existe todavia un router general de tools.
+- No hay memoria persistente mas alla del historial de terminal.
+- No hay `requirements.txt`, instalador ni comando global `maucode`.
+- No hay pruebas automatizadas.
+- Varias tools declaradas en carpetas estan vacias y pendientes de implementar.
+- El prompt del sistema todavia vive dentro de `main.py`.
+
+## Direccion tecnica recomendada
+
+Las siguientes mejoras deben hacerse manteniendo modulos pequenos y
+responsabilidades separadas:
+
+- extraer el prompt del sistema fuera de `main.py`;
+- crear un router de tools con validacion por accion;
+- implementar tools vacias una por una con permisos explicitos;
+- agregar pruebas enfocadas para parser JSON, confirmaciones y filesystem;
+- crear un archivo de dependencias;
+- mantener la documentacion sincronizada con la estructura real del repo.

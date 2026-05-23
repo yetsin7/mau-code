@@ -2,10 +2,10 @@ import json  # Para leer órdenes del modelo en formato JSON.
 
 import ollama  # Cliente para comunicarnos con Ollama.
 
-from terminal.input_handler import read_user_input  # Entrada del usuario con Prompt Toolkit.
-from terminal.renderer import console  # Consola visual con Rich.
+from shell.input_handler import read_user_input  # Entrada del usuario con Prompt Toolkit.
+from shell.renderer import console  # Consola visual con Rich.
 from tools.filesystem.create_file import create_file  # Tool para crear archivos.
-from terminal.session import start_terminal_session  # Loop principal de la sesión.
+from shell.session import start_terminal_session  # Loop principal de la sesión.
 
 
 # Nombre exacto del modelo instalado en Ollama.

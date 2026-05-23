@@ -5,7 +5,7 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
 
-from terminal.renderer import console  # Consola visual con Rich.
+from shell.renderer import console  # Consola visual con Rich.
 
 
 # Cuenta cuántas veces el usuario ha pegado texto multilínea.

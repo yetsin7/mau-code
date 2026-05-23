@@ -1,5 +1,5 @@
-from terminal.renderer import console  # Consola visual con Rich.
-from terminal.input_handler import read_user_input  # Función para leer entrada del usuario.
+from shell.renderer import console  # Consola visual con Rich.
+from shell.input_handler import read_user_input  # Función para leer entrada del usuario.
 
 
 # Loop princial de la sesión:

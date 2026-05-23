@@ -1,381 +1,273 @@
-# MauCode — Estructura Deseada del Proyecto
+# MauCode - Estructura real del proyecto
 
-Este documento define la arquitectura deseada de MauCode.
+Este documento describe la estructura que existe actualmente en `C:\Dev\mau-code`.
+No es una estructura deseada ni un roadmap: es el mapa real del working tree
+fuente que MauCode usa hoy.
 
-La idea es construir un agente tipo Claude Code
-utilizando Ollama y herramientas locales.
-
----
-
-# Objetivos del Proyecto
-
-MauCode deberá poder:
-
-- Conversar con modelos locales usando Ollama.
-- Ejecutar tools de forma segura.
-- Pedir confirmación antes de ejecutar acciones.
-- Leer y escribir archivos.
-- Ejecutar comandos de terminal.
-- Trabajar dentro de proyectos de programación.
-- Tener memoria y contexto.
-- Funcionar desde CMD usando:
-
-```bash
-maucode
-```
-
----
-
-# Estructura General Deseada
+## Arbol fuente actual
 
 ```txt
-MauCode/
-│
-├── main.py
-│
-├── core/
-│   ├── agent.py
-│   ├── chat.py
-│   ├── permissions.py
-│   ├── memory.py
-│   ├── json_parser.py
-│   └── tool_router.py
-│
-├── tools/
-│   ├── crear_archivo.py
-│   ├── leer_archivo.py
-│   ├── escribir_archivo.py
-│   ├── ejecutar_terminal.py
-│   ├── buscar_codigo.py
-│   └── listar_archivos.py
-│
-├── prompts/
-│   ├── system_prompt.txt
-│   ├── tool_prompt.txt
-│   └── personality_prompt.txt
-│
-├── storage/
-│   ├── chats/
-│   ├── memory/
-│   ├── logs/
-│   └── cache/
-│
-├── docs/
-│   ├── arquitectura.md
-│   ├── ideas.md
-│   ├── roadmap.md
-│   └── seguridad.md
-│
-├── tests/
-│   ├── test_tools.py
-│   ├── test_permissions.py
-│   └── test_memory.py
-│
-├── scripts/
-│   ├── install.bat
-│   ├── setup.ps1
-│   └── start.bat
-│
-├── .venv/
-│
-├── maucode.bat
-│
-├── requirements.txt
-│
+mau-code/
+├── .maucode_history
+├── Estructura.md
 ├── README.md
-│
-└── ESTRUCTURA_DESEADA.md
+├── main.py
+├── shell/
+│   ├── input_handler.py
+│   ├── paste_handler.py
+│   ├── renderer.py
+│   ├── run_python.py
+│   ├── run_terminal.py
+│   ├── session.py
+│   └── streaming.py
+└── tools/
+    ├── data/
+    │   ├── read_json.py
+    │   └── write_json.py
+    ├── filesystem/
+    │   ├── copy_file.py
+    │   ├── create_file.py
+    │   ├── create_folder.py
+    │   ├── delete_file.py
+    │   ├── delete_folder.py
+    │   ├── edit_file.py
+    │   ├── list_files.py
+    │   ├── move_file.py
+    │   ├── read_file.py
+    │   └── rename_file.py
+    ├── git/
+    │   ├── git_branch.py
+    │   ├── git_commit.py
+    │   ├── git_diff.py
+    │   └── git_status.py
+    └── search/
+        ├── search_code.py
+        └── search_text.py
 ```
 
----
+## Archivos generados
 
-# Explicación de Carpetas
+Python tambien genera carpetas `__pycache__/` con archivos `.pyc`. Esos archivos
+no son parte de la arquitectura fuente y no deben usarse para entender el diseno
+del proyecto.
 
-## core/
+## Responsabilidades por modulo
 
-Contendrá la lógica principal del agente.
+### `main.py`
 
-Aquí vivirá:
+Responsabilidad actual:
 
-- manejo del chat
-- memoria
-- permisos
-- parsing de JSON
-- routing de tools
-- agent loop
-- historial de conversación
+- define `MODEL_NAME`;
+- mantiene `SYSTEM_PROMPT`;
+- envia mensajes a Ollama en `ask_ollama()`;
+- detecta acciones JSON en `try_parse_json_actions()`;
+- procesa respuestas normales o acciones en `handle_model_response()`;
+- conecta el loop de terminal con `start_terminal_session()`.
 
----
+Riesgo principal:
 
-## tools/
+- concentra prompt, comunicacion con el modelo, parsing JSON y despacho de tools
+  en un solo archivo. Sigue funcionando, pero sera el primer candidato natural
+  para refactor cuando crezca el numero de tools.
 
-Cada tool estará separada en su propio archivo.
+### `shell/input_handler.py`
 
-Ejemplo:
+Responsabilidad actual:
 
-```txt
-crear_archivo.py
+- crea una sesion reutilizable de Prompt Toolkit;
+- guarda historial en `.maucode_history`;
+- detecta pegados multilínea con `Keys.BracketedPaste`;
+- reemplaza pegados grandes por placeholders visibles;
+- reconstruye el mensaje completo antes de enviarlo al modelo.
+
+Detalle importante:
+
+- el usuario ve un input limpio, pero MauCode recibe el texto completo pegado.
+
+### `shell/session.py`
+
+Responsabilidad actual:
+
+- imprime el saludo inicial;
+- mantiene el loop interactivo;
+- lee el mensaje del usuario;
+- corta la sesion con `salir`;
+- delega la llamada al modelo y el manejo de la respuesta.
+
+### `shell/renderer.py`
+
+Responsabilidad actual:
+
+- expone una instancia compartida de `Console` de Rich.
+
+### `shell/paste_handler.py`
+
+Estado actual:
+
+- archivo vacio.
+
+Uso esperado:
+
+- puede recibir en el futuro la logica de paste que hoy vive dentro de
+  `shell/input_handler.py`, si se decide separar esa responsabilidad.
+
+### `shell/run_python.py`
+
+Estado actual:
+
+- archivo vacio.
+
+Uso esperado:
+
+- punto de extension para ejecucion controlada de scripts Python.
+
+### `shell/run_terminal.py`
+
+Estado actual:
+
+- archivo vacio.
+
+Uso esperado:
+
+- punto de extension para ejecucion controlada de comandos de terminal.
+
+### `shell/streaming.py`
+
+Estado actual:
+
+- archivo vacio.
+
+Uso esperado:
+
+- punto de extension para streaming de respuestas del modelo.
+
+## Tools actuales
+
+### `tools/filesystem/create_file.py`
+
+Estado actual:
+
+- implementado.
+
+Responsabilidad:
+
+- crear carpetas cuando sea necesario;
+- crear archivos de texto o codigo;
+- validar que `file_name` no incluya rutas embebidas;
+- restringir extensiones permitidas;
+- escribir el contenido con UTF-8.
+
+Accion conectada al flujo principal:
+
+```json
+{
+  "action": "create_file",
+  "folder": "RUTA_EXACTA_DE_LA_CARPETA",
+  "file_name": "NOMBRE_DEL_ARCHIVO_CON_EXTENSION",
+  "content": "TEXTO_QUE_SE_GUARDARA"
+}
 ```
 
-Ventajas:
+### `tools/filesystem/*.py`
 
-- código limpio
-- más fácil mantener
-- fácil agregar nuevas tools
-- más parecido a Claude Code
+Archivos existentes:
 
-Cada tool deberá tener:
+- `copy_file.py`
+- `create_folder.py`
+- `delete_file.py`
+- `delete_folder.py`
+- `edit_file.py`
+- `list_files.py`
+- `move_file.py`
+- `read_file.py`
+- `rename_file.py`
 
-- validación
-- permisos
-- logs
-- manejo de errores
+Estado actual:
 
----
+- existen como modulos, pero estan vacios.
 
-## prompts/
+### `tools/git/*.py`
 
-Aquí vivirán los prompts grandes del sistema.
+Archivos existentes:
 
-Ventajas:
+- `git_branch.py`
+- `git_commit.py`
+- `git_diff.py`
+- `git_status.py`
 
-- evitar prompts gigantes dentro de Python
-- editar prompts sin tocar código
-- separar lógica y comportamiento
+Estado actual:
 
-Ejemplos:
+- existen como modulos, pero estan vacios.
 
-```txt
-system_prompt.txt
-tool_prompt.txt
-```
+### `tools/search/*.py`
 
----
+Archivos existentes:
 
-## storage/
+- `search_code.py`
+- `search_text.py`
 
-Guardará:
+Estado actual:
 
-- historial de chats
-- memoria
-- logs
-- cache
-- configuraciones
+- existen como modulos, pero estan vacios.
 
----
+### `tools/data/*.py`
 
-## docs/
+Archivos existentes:
 
-Documentación técnica del proyecto.
+- `read_json.py`
+- `write_json.py`
 
-Aquí iremos escribiendo:
+Estado actual:
 
-- arquitectura
-- ideas futuras
-- decisiones técnicas
-- notas de seguridad
+- existen como modulos, pero estan vacios.
 
----
-
-## tests/
-
-Pruebas automáticas del sistema.
-
-Ejemplos:
-
-- verificar tools
-- probar permisos
-- evitar bugs
-
----
-
-## scripts/
-
-Scripts para instalación y automatización.
-
-Ejemplos:
+## Flujo de ejecucion actual
 
 ```txt
-install.bat
-start.bat
-```
-
----
-
-# Flujo Correcto del Sistema
-
-MauCode NO ejecuta cosas automáticamente.
-
-Flujo correcto:
-
-```txt
-Usuario
+python main.py
 ↓
-Modelo propone acción
+main.start_terminal_session()
 ↓
-MauCode valida
+shell.session.start_terminal_session()
 ↓
-Usuario confirma
+shell.input_handler.read_user_input()
 ↓
-Python ejecuta
+main.ask_ollama()
 ↓
-Resultado vuelve al modelo
+Ollama responde texto o acciones JSON
+↓
+main.handle_model_response()
+↓
+si hay accion create_file, MauCode pide confirmacion
+↓
+tools.filesystem.create_file.create_file()
+↓
+resultado renderizado en terminal con Rich
 ```
 
----
+## Estructura que no existe actualmente
 
-# Filosofía del Proyecto
+La estructura anterior mencionaba carpetas que todavia no estan presentes en el
+repo. Actualmente no existen:
 
-La idea NO es hacer un simple chatbot.
+- `core/`
+- `prompts/`
+- `storage/`
+- `docs/`
+- `tests/`
+- `scripts/`
+- `requirements.txt`
+- `maucode.bat`
 
-La idea es crear:
+Esos nombres pueden seguir siendo ideas validas para el futuro, pero no deben
+presentarse como estructura real del proyecto mientras no existan en el repo.
 
-```txt
-un agente de terminal real
-```
+## Reglas de mantenimiento de estructura
 
-capaz de:
-
-- trabajar con código
-- editar proyectos
-- usar tools
-- entender contexto
-- automatizar tareas
-
----
-
-# Objetivo Final
-
-Poder abrir cualquier terminal y ejecutar:
-
-```bash
-maucode
-```
-
-y que automáticamente:
-
-- se inicie el agente
-- cargue el modelo de Ollama
-- tenga acceso a tools
-- recuerde el contexto
-- funcione como Claude Code
-
----
-
-# Stack Tecnológico Inicial
-
-## Lenguaje principal
-
-```txt
-Python
-```
-
-Porque:
-
-- rápido para prototipar
-- excelente para IA
-- muy compatible con Ollama
-- fácil crear tools locales
-
----
-
-## Modelos
-
-Usaremos Ollama.
-
-Ejemplo:
-
-```txt
-qwen2.5-coder:7b
-```
-
----
-
-## Terminal UI
-
-Usaremos:
-
-```txt
-Rich
-```
-
-y posiblemente después:
-
-```txt
-Textual
-```
-
----
-
-# Posibles Mejoras Futuras
-
-## Sistema de memoria
-
-Guardar conversaciones y contexto.
-
----
-
-## RAG local
-
-Buscar información dentro de proyectos.
-
----
-
-## Multiagentes
-
-Sub-agentes especializados.
-
----
-
-## Integración VSCode
-
-Extensión personalizada.
-
----
-
-## MCP (Model Context Protocol)
-
-Compatibilidad con herramientas externas.
-
----
-
-## Plugin System
-
-Sistema de extensiones.
-
----
-
-## Tool Marketplace
-
-Instalar tools externas.
-
----
-
-# Reglas de Desarrollo
-
-- Mantener código modular.
-- Una tool por archivo.
-- Explicar el código paso a paso.
-- Evitar archivos gigantes.
-- Refactorizar constantemente.
-- Separar prompts del código.
-- Mantener permisos seguros.
-
----
-
-# Estado Actual del Proyecto
-
-Actualmente MauCode puede:
-
-- conversar con Ollama
-- detectar JSON
-- preparar tool calling
-- pedir confirmación antes de ejecutar acciones
-
-Próximo objetivo:
-
-```txt
-mover tools a carpeta tools/
-```
-
-y crear el primer router de herramientas.
+- Documentar solo carpetas y archivos reales.
+- Marcar claramente los modulos vacios como pendientes.
+- No presentar herramientas no conectadas como funcionales.
+- Mantener una tool por archivo.
+- Mantener `main.py` como punto de entrada hasta que exista un modulo `core/`.
+- Crear pruebas antes de ampliar acciones sensibles como terminal, Git o borrado.
+- Actualizar este archivo cada vez que se cree, elimine o mueva un modulo fuente.
