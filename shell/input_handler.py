@@ -1,11 +1,15 @@
-import re
-
+from prompt_toolkit.application import run_in_terminal
+from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
-
+from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
 from shell.renderer import console  # Consola visual con Rich.
+from shell.command_registry import get_command_names, get_command_entries
+from shell.terminal_ui import render_shortcuts_help
+
+import re
 
 
 # Cuenta cuántas veces el usuario ha pegado texto multilínea.
@@ -71,12 +75,102 @@ def handle_paste(event):
     event.current_buffer.insert_text(placeholder)
 
 
+
+@key_bindings.add("?")
+def handle_shortcuts_help(event):
+    """
+    Muestra la ayuda rápida cuando el usuario presiona '?'.
+
+    Si el usuario ya escribió algo, insertamos el signo normalmente.
+    Si el input está vacío, mostramos la pantalla de atajos.
+    """
+
+    if event.current_buffer.text:
+        event.current_buffer.insert_text("?")
+        return
+    
+    run_in_terminal(render_shortcuts_help)
+
+
+
+class CommandAutoSuggest(AutoSuggest):
+    """
+    Muestra sugerencias fantasma para comandos internos.
+
+    Ejemplo:
+    si el usuario escribe "/mod", MauCode puede sugerir "el"
+    para completar "/model".
+    """
+
+    def get_suggestion(self, buffer, document):
+        """
+        Devuelve la parte restante del comando sugerido.
+
+        Solo funciona cuando el usuario está escribiendo un comando,
+        es decir, cuando el texto empieza con "/".
+        """
+          
+        text = document.text_before_cursor
+    
+        if not text.startswith("/"):
+            return None
+                
+        # Si ya hay espacios, asumimos que no es un comando simple:
+        if " " in text:
+            return None
+        
+        for command in get_command_names():
+            if command.startswith(text) and command != text:
+                remaining_text = command[len(text):]
+                return Suggestion(remaining_text)
+            
+        return None
+        
+
+    
+# Autocompletador de comandos internos:
+class CommandCompleter(Completer):
+    """
+    Muestra comandos internos con descripción.
+
+    Esto permite que al escribir '/' aparezca una lista tipo Claude Code,
+    usando el registro central de comandos.
+    """
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+
+        if not text.startswith("/"):
+            return
+        
+        if " " in text:
+            return
+        
+        for command, command_info in get_command_entries().items():
+            if not command.startswith(text):
+                continue
+
+            yield Completion(
+                command,
+                start_position = -len(text),
+                display = command,
+                display_meta = command_info.get("description", ""),
+            )
+
+    
+
+
 # Sesión reutilizable de Prompt Toolkit.
 # Incluye historial con flechas arriba/abajo y soporte para paste custom.
 session = PromptSession(
-    history=FileHistory(".maucode_history"),
-    key_bindings=key_bindings,
+    history = FileHistory(".maucode_history"),
+    key_bindings = key_bindings,
+    completer = CommandCompleter(),
+    auto_suggest = CommandAutoSuggest(),
+    complete_while_typing = True,
 )
+
+
 
 
 def read_user_input() -> str:

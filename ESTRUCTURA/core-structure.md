@@ -1,3 +1,198 @@
+# core
+
+## ACTION_EXECUTOR.PY
+core\action_executor.py
+
+```python
+from core.json_parser import try_parse_json_actions
+from core.permissions import ask_tool_permission
+from shell.renderer import console
+from tools.filesystem.create_file import create_file
+
+
+
+def handle_model_response(model_response: str, permission_session):
+    """
+    Decide si la respuesta del modelo es texto normal
+    o una lista de instrucciones para ejecutar tools.
+    """
+
+    actions = try_parse_json_actions(model_response)
+
+    # Si no se pudo interpretar como JSON, es una respuesta normal.
+    if actions is None:
+        console.print("\n[bold green]MauCode: >[/bold green]")
+        console.print(model_response)
+        console.print()
+        return
+
+    # Recorremos todas las acciones que el modelo haya solicitado.
+    for action in actions:
+        execute_action(action, permission_session)
+
+
+
+def execute_action(action: dict, permission_session):
+    """
+    Ejecuta una acción individual devuelta por el modelo.
+
+    Por ahora solo soporta create_file.
+    En el futuro aquí podremos conectar read_file, edit_file,
+    list_files, terminal, git, etc.
+    """
+
+    # Tool: create_file
+    if action.get("action") == "create_file":
+        execute_create_file(action, permission_session)
+        return
+    
+    console.print("\n[bold red]La acción solicitada aún no existe. >[/bold red]")
+    console.print(action)
+    console.print()
+
+
+
+def execute_create_file(action: dict, permission_session):
+    """
+    Ejecuta la tool create_file después de pedir permiso al usuario.
+    """
+         
+    folder = action.get("folder", "")
+    file_name = action.get("file_name", "")
+    content = action.get("content", "")
+
+    console.print(
+        "\n[bold yellow]MauCode quiere ejecutar esta acción: >[/bold yellow]"
+    )
+    console.print("[cyan]Tool:[/cyan] create_file")
+    console.print(f"[cyan]Carpeta:[/cyan] {folder}")
+    console.print(f"[cyan]Nombre del archivo:[/cyan] {file_name}")
+
+    has_permission = ask_tool_permission(permission_session)
+
+    if not has_permission:
+        console.print("\n[bold red]Acción cancelada por el usuario.[/bold red]\n")
+        return
+
+    result = create_file(
+        folder=folder,
+        file_name=file_name,
+        content=content,
+    )
+
+    console.print("\n[bold green]Resultado: >[/bold green]")
+    console.print(result)
+    console.print()
+```
+
+## ACTION_GUARD.PY
+core\action_guard.py
+
+```python
+
+```
+
+## JSON_PARSER.PY
+core\json_parser.py
+
+```python
+import json  # Para leer órdenes del modelo en formato JSON.
+import re # Para extraer bloques JSON aunque vengan dentro de markdown.
+
+
+def try_parse_json_actions(text: str):
+    """
+    Intenta convertir la respuesta del modelo en una lista de acciones JSON.
+
+    Este parser es tolerante porque los modelos locales a veces responden con:
+    - texto antes del JSON;
+    - bloques markdown ```json;
+    - varios objetos JSON consecutivos;
+    - texto después del JSON.
+    """
+
+    text = text.strip()
+
+    # Primero buscamos bloques markdown con JSON.
+    fence_blocks = extract_fenced_json_blocks(text)
+
+    if fence_blocks:
+        combined_text = "\n".join(fence_blocks)
+
+    
+    # Si no hay bloques markdown, intentamos buscar objetos JSON en el texto:
+    return parse_multiple_json_objects(text)
+
+
+
+def extract_fenced_json_blocks(text: str) -> list[str]:
+
+    """
+    Extrae el contenido dentro de bloques markdown JSON.
+
+    Ejemplo:
+    ```json
+    { ... }
+    ```
+    """
+
+    pattern = r"```(?:json)?\s*(.*?)```"
+
+    return re.findall(
+        pattern,
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+
+
+
+def parse_multiple_json_objects(text: str):
+    """
+    Lee uno o varios objetos JSON desde un texto.
+
+    Si encuentra texto antes del primer JSON, avanza hasta el siguiente "{"
+    para no fallar cuando el modelo agregue frases innecesarias.
+    """
+
+    decoder = json.JSONDecoder()
+    actions = []
+    index = 0
+
+    text = text.strip()
+
+    while index < len(text):
+
+        # Saltamos espacios y saltos de línea:
+        while index < len(text) and text[index].isspace():
+            index += 1
+
+        # Si hay texto antes de un JSON, buscamos el siguiente objeto.
+        if index < len(text) and text[index] != "{":
+            next_object_start = text.find("{", index)
+
+            if next_object_start == -1:
+                break
+
+            index = next_object_start
+
+        try:
+            action, next_index = decoder.raw_decode(text[index:])
+            actions.append(action)
+            index += next_index
+
+        except json.JSONDecodeError:
+            return None
+        
+    if not actions:
+        return None
+
+    return actions
+```
+
+## MODEL_CLIENT.PY
+core\model_client.py
+
+```python
 import ollama  # Cliente para comunicarnos con Ollama.
 import re
 from prompts.system_prompt import SYSTEM_PROMPT
@@ -462,3 +657,64 @@ def warm_up_model(model_name: str | None = None) -> tuple[bool, str]:
     
     except Exception as error:
         return False, f"No se pudeo iniciar el modelo: { error }"
+```
+
+## PERMISSIONS.PY
+core\permissions.py
+
+```python
+# AQUÍ SE MANEJA EL TEMA DE PERMISOS PARA MauCode:
+class PermissionSession:
+    """
+    Guarda permisos temporales para una sola respuesta del modelo.
+
+    Importante:
+    - No vive durante toda la ejecución de MauCode.
+    - Se crea de nuevo cada vez que el usuario envía un mensaje.
+    - Si el usuario elige "sí a todo", solo aplica a las acciones de
+    esa respuesta específica del modelo.
+    """
+
+    def __init__(self):
+        """
+        Inicializa la sesión de permisos.
+        
+        allow_all empieza en False porque MauCode siempre debe preguntar 
+        al inicio de cada nuevo mensaje del usuario.
+        """
+
+        self.allow_all = False
+
+
+# Función para solicitar permisos:
+def ask_tool_permission(permission_session: PermissionSession) -> bool:
+    """
+    Pregunta al usuario si quiere ejecutar una acción.
+
+    Opciones:
+    1. Sí: ejecuta solo esta acción.
+    2. Sí a todo: ejecuta esta acción y las siguientes acciones
+        de la misma respuesta del modelo.
+    3. No, dime algo más: cancela esta acción.
+    """
+
+    if permission_session.allow_all:
+        return True
+    
+    print("\n¿Qué quieres hacer?")
+    print("1. Sí")
+    print("2. Sí a todo")
+    print("3. No, dime algo más")
+
+    option = input("Elige una opción (1. Sí, 2. Sí a todo, 3. No, dime algo más): ").strip()
+
+    if option == "1":
+        return True
+    
+    if option == "2":
+        permission_session.allow_all = True
+        return True
+    
+    return False
+```
+
