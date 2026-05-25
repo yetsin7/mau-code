@@ -36,6 +36,7 @@ TRANSLATIONS = {
         "empty_provider_error": "[bold red]Error: El nombre del proveedor no puede estar vacío.[/bold red]",
         "detect_protocol_failed": "[bold red]Error: No se pudo detectar un protocolo de comunicación válido (OpenAI, Anthropic, Gemini, Groq) para esta API key.[/bold red]",
         "api_deleted_success": "[bold green]✓ API '{name}' eliminada con éxito.[/bold green]",
+        "double_ctrl_c_alert": "Presiona otra vez Ctrl+C para salir",
     },
     "en": {
         "select_provider_title": "Configure API Key",
@@ -71,6 +72,7 @@ TRANSLATIONS = {
         "empty_provider_error": "[bold red]Error: Provider name cannot be empty.[/bold red]",
         "detect_protocol_failed": "[bold red]Error: Could not detect a valid communication protocol (OpenAI, Anthropic, Gemini, Groq) for this API key.[/bold red]",
         "api_deleted_success": "[bold green]✓ API '{name}' deleted successfully.[/bold green]",
+        "double_ctrl_c_alert": "Press Ctrl+C again to exit",
     }
 }
 

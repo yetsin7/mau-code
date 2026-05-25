@@ -92,6 +92,42 @@ def handle_shortcuts_help(event):
     run_in_terminal(render_shortcuts_help)
 
 
+# Estado para rastrear si el usuario ya presionó Ctrl+C una vez en el prompt vacío
+ctrl_c_pressed_once = False
+
+
+@key_bindings.add("c-c")
+def handle_ctrl_c(event):
+    """
+    Controla el evento Ctrl+C en el prompt de MauCode.
+
+    - Si hay texto en el input: borra la entrada para que el usuario pueda escribir de nuevo.
+    - Si el input está vacío: la primera vez lanza una alerta pidiendo confirmación.
+      La segunda vez consecutiva cierra la sesión de MauCode.
+    """
+    global ctrl_c_pressed_once
+
+    import importlib
+    i18n_manager = importlib.import_module("core.i18n-manager")
+    get_text = i18n_manager.get_text
+
+    # Si hay algún texto en el buffer, simplemente lo borramos
+    if event.current_buffer.text.strip() or event.current_buffer.text:
+        event.current_buffer.text = ""
+        ctrl_c_pressed_once = False
+    else:
+        # Si está vacío, revisamos si es la segunda vez consecutiva
+        if ctrl_c_pressed_once:
+            event.app.exit(exception=KeyboardInterrupt)
+        else:
+            ctrl_c_pressed_once = True
+            
+            # Mostramos la alerta temporal abajo
+            def print_alert():
+                console.print(f"\n[bold yellow]{get_text('double_ctrl_c_alert')}[/bold yellow]")
+                
+            run_in_terminal(print_alert)
+
 
 class CommandAutoSuggest(AutoSuggest):
     """
@@ -187,7 +223,8 @@ def read_user_input() -> str:
     reciba el contenido completo.
     """
 
-    global paste_storage
+    global paste_storage, ctrl_c_pressed_once
+    ctrl_c_pressed_once = False
 
     # Leemos el mensaje final del usuario.
     message = session.prompt("Tú: > ")

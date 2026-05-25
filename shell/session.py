@@ -1,9 +1,52 @@
+import threading
+import time
+import msvcrt
 from shell.commands import handle_internal_command
 from shell.renderer import console  # Consola visual con Rich.
 from shell.input_handler import read_user_input  # Función para leer entrada del usuario.
 from shell.terminal_ui import clear_terminal, render_startup_header 
 from shell.workspace import ask_workspace_trust, get_current_workspace
 from core.permissions import PermissionSession
+
+
+def ask_model_with_esc_cancel(ask_ollama_func, conversation_history) -> dict:
+    """
+    Ejecuta la consulta al modelo en un hilo de fondo y escucha la tecla Esc en Windows
+    para cancelar la generación en caliente de forma inmediata sin bloquear el terminal.
+    """
+    model_result = {}
+    exception_raised = None
+    
+    def run_query():
+        nonlocal model_result, exception_raised
+        try:
+            model_result = ask_ollama_func(conversation_history)
+        except Exception as e:
+            exception_raised = e
+
+    thread = threading.Thread(target=run_query)
+    thread.daemon = True
+    thread.start()
+
+    # Bucle de espera no bloqueante
+    while thread.is_alive():
+        # En Windows, detectamos si se pulsó una tecla sin detener el flujo principal
+        if msvcrt.kbhit():
+            key = msvcrt.getch()
+            # Esc en Windows se representa por el byte b'\x1b'
+            if key == b'\x1b':
+                # Consumimos cualquier otra tecla en cola del búfer
+                while msvcrt.kbhit():
+                    msvcrt.getch()
+                return {"content": "", "thinking": "", "canceled": True}
+        
+        time.sleep(0.05)
+
+    if exception_raised:
+        raise exception_raised
+
+    return model_result
+
 
 
 # Loop princial de la sesión:
@@ -89,7 +132,7 @@ def start_terminal_session(
                 "[bold cyan]MauCode está pensando...[/bold cyan]",
                 spinner = "dots",
             ):
-                model_result = ask_ollama(conversation_history)
+                model_result = ask_model_with_esc_cancel(ask_ollama, conversation_history)
 
         except KeyboardInterrupt:
             conversation_history.pop()
@@ -106,8 +149,17 @@ def start_terminal_session(
 
         response = model_result.get("content", "")
         thinking = model_result.get("thinking", "")
+        canceled = model_result.get("canceled", False)
+
+        if canceled:
+            conversation_history.pop()
+            console.print()
+            console.print("[bold yellow]Generación cancelada por el usuario con Esc.[/bold yellow]")
+            console.print()
+            continue
 
         if not response.strip():
+            conversation_history.pop()
             console.print()
             console.print("[bold yellow]El modelo respondió vacío.[/bold yellow]")
             console.print()
