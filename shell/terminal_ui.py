@@ -1,8 +1,12 @@
+import importlib
 from pathlib import Path
 from rich.table import Table
 from shell.renderer import console
 import os
 
+# Carga dinámica del gestor i18n
+i18n_manager = importlib.import_module("core.i18n-manager")
+get_text = i18n_manager.get_text
 
 SEPARATOR = "-" * 70
 
@@ -39,12 +43,12 @@ def render_startup_header(
     """
 
     console.print(SEPARATOR)
-    console.print("[bold]Accessing workspace:[/bold]")
-    console.print()
-
-    console.print("[bold cyan] ▐▛███▜▌[/bold cyan]   [bold]MauCode[/bold]")
-    console.print("[bold cyan]▝▜█████▛▘[/bold cyan]  Local coding agent · Ollama")
-    console.print(f"[bold cyan]  ▘▘ ▝▝[/bold cyan]    {workspace_path}")
+    
+    # Mascota ASCII de gato cyberpunk estilizada y premium exclusiva de MauCode
+    console.print("   [bold cyan]/\\____/\\[/bold cyan]")
+    console.print(f"  [bold cyan]/  [bold magenta]o[/bold magenta]  [bold magenta]o[/bold magenta]  \\[/bold cyan]   [bold magenta]MauCode[/bold magenta] · [bold white]{get_text('startup_subtitle')}[/bold white]")
+    console.print(f" [bold cyan](  [bold magenta]  ^  [/bold magenta]  )[/bold cyan]   [dim]{workspace_path}[/dim]")
+    console.print(f"  [bold cyan] \\ [bold magenta]---[/bold magenta] /[/bold cyan]    [dim]{get_text('startup_shortcuts_tip')}[/dim]")
 
     console.print()
 

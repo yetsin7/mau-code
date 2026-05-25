@@ -37,6 +37,8 @@ TRANSLATIONS = {
         "detect_protocol_failed": "[bold red]Error: No se pudo detectar un protocolo de comunicación válido (OpenAI, Anthropic, Gemini, Groq) para esta API key.[/bold red]",
         "api_deleted_success": "[bold green]✓ API '{name}' eliminada con éxito.[/bold green]",
         "double_ctrl_c_alert": "Presiona otra vez Ctrl+C para salir",
+        "startup_subtitle": "Tu copiloto de desarrollo local",
+        "startup_shortcuts_tip": "Escribe ? para atajos | / para comandos",
     },
     "en": {
         "select_provider_title": "Configure API Key",
@@ -73,6 +75,8 @@ TRANSLATIONS = {
         "detect_protocol_failed": "[bold red]Error: Could not detect a valid communication protocol (OpenAI, Anthropic, Gemini, Groq) for this API key.[/bold red]",
         "api_deleted_success": "[bold green]✓ API '{name}' deleted successfully.[/bold green]",
         "double_ctrl_c_alert": "Press Ctrl+C again to exit",
+        "startup_subtitle": "Your local development copilot",
+        "startup_shortcuts_tip": "Type ? for shortcuts | / for commands",
     }
 }
 
