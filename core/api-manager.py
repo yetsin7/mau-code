@@ -52,7 +52,7 @@ def make_http_request(url: str, headers: dict = None, method: str = "GET", body_
             req.add_header("Content-Type", "application/json")
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=120) as response:
             status = response.status
             body = response.read().decode("utf-8")
             return status, json.loads(body)
@@ -191,14 +191,16 @@ def add_api_provider(custom_name: str, api_key: str) -> tuple[bool, list[str] | 
     try:
         models = test_and_fetch_models(protocol, api_key)
         config = load_api_config()
+        providers = config.get("providers", {})
         
         # Guardamos en minúsculas en el diccionario para uniformidad en búsquedas
-        config[clean_name.lower()] = {
+        providers[clean_name.lower()] = {
             "name": clean_name,
             "api_key": api_key.strip(),
             "protocol": protocol,
             "models": models
         }
+        config["providers"] = providers
         
         if save_api_config(config):
             return True, models
@@ -212,26 +214,41 @@ def delete_api_provider(custom_name: str) -> bool:
     Elimina un proveedor de API guardado por su nombre.
     """
     config = load_api_config()
+    providers = config.get("providers", {})
     clean_key = custom_name.lower().strip()
-    if clean_key in config:
-        del config[clean_key]
+    if clean_key in providers:
+        del providers[clean_key]
+        config["providers"] = providers
         return save_api_config(config)
     return False
 
 def get_configured_providers() -> list[str]:
     """
-    Retorna la lista de los nombres de los proveedores configurados.
+    Retorna la lista de los nombres de los proveedores configurados por el usuario.
+    
+    IMPORTANTE:
+    - No existen plataformas API predefinidas en el sistema.
+    - El usuario puede agregar cualquier plataforma con el nombre/apodo que desee y su propia API key.
+    - El sistema nunca agrega proveedores por defecto ni sugiere nombres: todo es personalizado.
     """
     config = load_api_config()
-    return [details.get("name", key) for key, details in config.items()]
+    providers = config.get("providers", {})
+    return [details.get("name", key) for key, details in providers.items()]
 
 def get_api_models() -> list[str]:
     """
-    Retorna los modelos disponibles prefijados con el nombre personalizado del proveedor.
+    Retorna los modelos disponibles, cada uno prefijado con el nombre personalizado del proveedor.
+    
+    Ejemplo: Si el usuario agregó un proveedor llamado "OpenHandles" y otro "MiAPI", los modelos se listarán como:
+        - OpenHandles/gpt-4
+        - MiAPI/claude-3-haiku
+    
+    No existen modelos ni plataformas predefinidas: todo lo que aparece aquí fue agregado por el usuario.
     """
     config = load_api_config()
+    providers = config.get("providers", {})
     all_models = []
-    for key, details in config.items():
+    for key, details in providers.items():
         name_prefix = details.get("name", key)
         provider_models = details.get("models", [])
         for model in provider_models:
@@ -251,7 +268,8 @@ def get_api_key_for_model(model_name: str) -> tuple[str | None, str | None, str 
     real_model = parts[1]
     
     config = load_api_config()
-    provider_details = config.get(custom_name)
+    providers = config.get("providers", {})
+    provider_details = providers.get(custom_name)
     if not provider_details:
         return None, None, None
         

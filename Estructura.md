@@ -15,12 +15,16 @@ mau-code/
 ├── core/
 │   ├── action_executor.py
 │   ├── action_guard.py
+│   ├── api-manager.py
+│   ├── i18n-manager.py
 │   ├── json_parser.py
 │   ├── model_client.py
+│   ├── ollama-service.py
 │   └── permissions.py
 ├── prompts/
 │   └── system_prompt.py
 ├── shell/
+│   ├── api-commands.py
 │   ├── commands.py
 │   ├── command_registry.py
 │   ├── input_handler.py
@@ -33,27 +37,27 @@ mau-code/
 │   └── workspace.py
 └── tools/
     ├── data/
-    │   ├── read_json.py
-    │   └── write_json.py
+    │   ├── read-json.py
+    │   └── write-json.py
     ├── filesystem/
-    │   ├── copy_file.py
-    │   ├── create_file.py
-    │   ├── create_folder.py
-    │   ├── delete_file.py
-    │   ├── delete_folder.py
-    │   ├── edit_file.py
-    │   ├── list_files.py
-    │   ├── move_file.py
-    │   ├── read_file.py
-    │   └── rename_file.py
+    │   ├── copy-file.py
+    │   ├── create-file.py
+    │   ├── create-folder.py
+    │   ├── delete-file.py
+    │   ├── delete-folder.py
+    │   ├── edit-file.py
+    │   ├── list-files.py
+    │   ├── move-file.py
+    │   ├── read-file.py
+    │   └── rename-file.py
     ├── git/
-    │   ├── git_branch.py
-    │   ├── git_commit.py
-    │   ├── git_diff.py
-    │   └── git_status.py
+    │   ├── git-branch.py
+    │   ├── git-commit.py
+    │   ├── git-diff.py
+    │   └── git-status.py
     └── search/
-        ├── search_code.py
-        └── search_text.py
+        ├── search-code.py
+        └── search-text.py
 ```
 
 ## Archivos generados

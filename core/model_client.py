@@ -1,4 +1,3 @@
-import re
 import ollama
 import importlib
 from prompts.system_prompt import SYSTEM_PROMPT
@@ -15,8 +14,8 @@ warm_up_local_model = ollama_service.warm_up_local_model
 
 api_manager = importlib.import_module("core.api-manager")
 get_api_models = api_manager.get_api_models
-get_api_key_for_model = api_manager.get_api_key_for_model
-make_http_request = api_manager.make_http_request
+load_api_config = api_manager.load_api_config
+save_api_config = api_manager.save_api_config
 
 
 # Modelo actualmente seleccionado durante MauCode.
@@ -28,8 +27,24 @@ thinking_enabled = False
 def select_default_model() -> str:
     """
     Selecciona automáticamente el mejor modelo disponible.
-    Prioriza qwen3:8b local, luego otros locales, y finalmente modelos por API.
+    Prioriza el último modelo seleccionado de la sesión anterior si está configurado y es válido.
     """
+    try:
+        config = load_api_config()
+        settings = config.get("settings", {})
+        last_model = settings.get("last_selected_model")
+        if last_model:
+            if "/" in last_model:
+                api_models = get_api_models()
+                if last_model in api_models:
+                    return last_model
+            else:
+                installed_models = list_local_ollama_models()
+                if last_model in installed_models:
+                    return last_model
+    except Exception:
+        pass
+
     try:
         installed_models = list_local_ollama_models()
         if PREFERRED_MODEL_NAME in installed_models:
@@ -67,13 +82,23 @@ def get_current_model() -> str:
 
 def set_current_model(model_name: str) -> None:
     """
-    Cambia el modelo activo de MauCode durante la sesión actual.
+    Cambia el modelo activo de MauCode durante la sesión actual y lo persiste.
     """
     global current_model_name
     global thinking_enabled
 
     old_model = current_model_name
     current_model_name = model_name
+
+    # Guardamos el modelo seleccionado como el último usado de forma persistente
+    try:
+        config = load_api_config()
+        settings = config.get("settings", {})
+        settings["last_selected_model"] = model_name
+        config["settings"] = settings
+        save_api_config(config)
+    except Exception:
+        pass
 
     # Si cambiamos de un modelo local de Ollama a otro, descargamos el anterior
     if old_model and old_model != model_name and "/" not in old_model:
@@ -84,6 +109,7 @@ def set_current_model(model_name: str) -> None:
 
     if not model_supports_thinking(model_name):
         thinking_enabled = False
+
 
 def get_thinking_enabled() -> bool:
     """
@@ -113,7 +139,10 @@ def list_installed_ollama_models() -> list[str]:
 def detect_thinking_support_for_all_models(models_list: list[str]) -> dict[str, bool]:
     """
     Detecta el soporte de thinking para una lista de modelos (locales y de API).
-    Los modelos de API devuelven False para la implementación de Ollama.
+    
+    - Para modelos locales de Ollama, detecta si soportan thinking realmente.
+    - Para modelos de API (cualquier modelo con "/" en el nombre), siempre retorna False (ningún API soporta thinking local).
+    - Esta función es usada para mostrar en la UI/CLI si cada modelo tiene acceso a thinking (True/False), independientemente de su origen.
     """
     local_models = [m for m in models_list if "/" not in m]
     api_models = [m for m in models_list if "/" in m]
@@ -121,7 +150,7 @@ def detect_thinking_support_for_all_models(models_list: list[str]) -> dict[str, 
     thinking_support = {}
     if local_models:
         thinking_support = detect_local_thinking_support(local_models)
-    
+    # Para todos los modelos API, explicitamente False
     for m in api_models:
         thinking_support[m] = False
 
@@ -141,7 +170,11 @@ def model_supports_thinking(model_name: str | None = None) -> bool:
 
 def get_model_thinking_label(model_name: str) -> str:
     """
-    Devuelve la etiqueta visual para el selector de modelos.
+    Devuelve la etiqueta visual para el selector de modelos, indicando si soporta thinking.
+    
+    - Si el modelo soporta thinking (solo Ollama local), muestra "[thinking]".
+    - Si no, retorna cadena vacía.
+    - Esto se usa para que el usuario vea claramente qué modelos tienen acceso a razonamiento avanzado.
     """
     if model_supports_thinking(model_name):
         return "    [thinking]"
@@ -154,125 +187,11 @@ def should_use_thinking_for_chat(model_name: str | None = None) -> bool:
     selected_model = model_name or get_current_model()
     return get_thinking_enabled() and model_supports_thinking(selected_model)
 
-def split_inline_thinking(content: str) -> tuple[str, str]:
-    """
-    Extrae bloques <think>...</think> de las respuestas de los modelos.
-    """
-    pattern = r"<think>(.*?)</think>"
-    matches = re.findall(pattern, content, flags=re.DOTALL | re.IGNORECASE)    
+# Carga dinámica del módulo de chat con APIs externas (extraído por límite de 400 líneas)
+api_chat = importlib.import_module("core.api-chat")
+ask_api_model = api_chat.ask_api_model
+split_inline_thinking = api_chat.split_inline_thinking
 
-    if not matches:
-        return "", content
-    
-    thinking = "\n\n".join(match.strip() for match in matches)
-    final_content = re.sub(
-        pattern,
-        "",
-        content,
-        flags=re.DOTALL | re.IGNORECASE,
-    ).strip()
-
-    return thinking, final_content
-
-def ask_api_model(model_name: str, conversation_messages: list[dict]) -> dict:
-    """
-    Realiza la llamada de chat completion para los proveedores de API externos.
-    """
-    provider, real_model, api_key = get_api_key_for_model(model_name)
-    if not provider or not api_key:
-        raise RuntimeError(f"No se encontró clave de API configurada para el modelo: {model_name}")
-
-    # Estructuramos el historial con el prompt de sistema
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        *conversation_messages
-    ]
-
-    content = ""
-    
-    if provider == "openai":
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {"Authorization": f"Bearer {api_key}"}
-        body = {
-            "model": real_model,
-            "messages": messages
-        }
-        _, response = make_http_request(url, headers=headers, method="POST", body_data=body)
-        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-    elif provider == "anthropic":
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        }
-        
-        # Anthropic requiere extraer el system prompt a un campo raíz independiente
-        anthropic_messages = []
-        system_text = SYSTEM_PROMPT
-        
-        for msg in conversation_messages:
-            if msg["role"] == "system":
-                system_text = msg["content"]
-            else:
-                anthropic_messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"]
-                })
-                
-        body = {
-            "model": real_model,
-            "system": system_text,
-            "messages": anthropic_messages,
-            "max_tokens": 4096
-        }
-        _, response = make_http_request(url, headers=headers, method="POST", body_data=body)
-        content = response.get("content", [{}])[0].get("text", "")
-
-    elif provider == "gemini":
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{real_model}:generateContent?key={api_key}"
-        
-        # Mapeamos los mensajes al formato de contenido de Gemini
-        contents = []
-        for msg in conversation_messages:
-            if msg["role"] == "system":
-                continue
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append({
-                "role": role,
-                "parts": [{"text": msg["content"]}]
-            })
-            
-        body = {
-            "contents": contents,
-            "systemInstruction": {
-                "parts": [{"text": SYSTEM_PROMPT}]
-            }
-        }
-        _, response = make_http_request(url, method="POST", body_data=body)
-        content = response.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-
-    elif provider == "groq":
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {"Authorization": f"Bearer {api_key}"}
-        body = {
-            "model": real_model,
-            "messages": messages
-        }
-        _, response = make_http_request(url, headers=headers, method="POST", body_data=body)
-        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-    else:
-        raise RuntimeError(f"Proveedor de API no soportado: {provider}")
-
-    # Extraemos bloques de pensamiento si existen en el contenido devuelto
-    thinking, final_content = split_inline_thinking(content)
-    
-    return {
-        "content": final_content.strip(),
-        "thinking": thinking.strip(),
-    }
 
 def ask_ollama(conversation_messages: list[dict]) -> dict:
     """

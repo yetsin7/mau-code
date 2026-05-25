@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from pathlib import Path
@@ -160,6 +161,79 @@ def clean_old_structure_files() -> None:
         file_path.unlink()
 
 
+def empty_json_values(data):
+    """
+    Devuelve la misma estructura de un JSON,
+    pero reemplaza todos los valores finales por strings vacíos.
+
+    Ejemplo:
+    {
+        "api_key": "<api-key>",
+        "model": "gpt-4"
+    }
+
+    se convierte en:
+    {
+        "api_key": "",
+        "model": ""
+    }
+    """
+
+    if isinstance(data, dict):
+        return {
+            key: empty_json_values(value)
+            for key, value in data.items()
+        }
+
+    if isinstance(data, list):
+        return [
+            empty_json_values(item)
+            for item in data
+        ]
+
+    return ""
+
+
+def get_safe_json_content(file_path: Path) -> str:
+    """
+    Lee un archivo JSON sensible y devuelve su estructura sin datos reales.
+
+    Esto evita que api-config.json copie claves reales,
+    tokens o configuraciones privadas dentro de los archivos .md.
+    """
+
+    try:
+        content = file_path.read_text(encoding="utf-8")
+        json_data = json.loads(content)
+        safe_json_data = empty_json_values(json_data)
+
+        return json.dumps(
+            safe_json_data,
+            indent=4,
+            ensure_ascii=False,
+        )
+
+    except json.JSONDecodeError:
+        # Si el JSON está mal formado, no copiamos su contenido real.
+        # Es más seguro generar un JSON vacío que filtrar una API key.
+        return "{}"
+
+
+def get_safe_file_content(file_path: Path) -> str:
+    """
+    Lee el contenido de un archivo antes de escribirlo en la documentación.
+
+    Caso especial:
+    - api-config.json se escribe con su estructura,
+      pero con todos sus valores vacíos.
+    """
+
+    if file_path.name == "api-config.json":
+        return get_safe_json_content(file_path)
+
+    return file_path.read_text(encoding="utf-8")
+
+
 def write_folder_structure_file(relative_folder: Path, files: list[Path]) -> None:
     """
     Crea un archivo markdown para una carpeta específica.
@@ -181,7 +255,7 @@ def write_folder_structure_file(relative_folder: Path, files: list[Path]) -> Non
             out.write(f"{relative_path}\n\n")
 
             try:
-                content = file_path.read_text(encoding="utf-8")
+                content = get_safe_file_content(file_path)
 
                 out.write(f"```{lang}\n")
                 out.write(content.rstrip())
@@ -189,7 +263,6 @@ def write_folder_structure_file(relative_folder: Path, files: list[Path]) -> Non
 
             except Exception as error:
                 out.write(f"*Error al leer el archivo: {error}*\n\n")
-
 
 
 def main() -> None:

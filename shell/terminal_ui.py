@@ -8,7 +8,7 @@ import os
 i18n_manager = importlib.import_module("core.i18n-manager")
 get_text = i18n_manager.get_text
 
-SEPARATOR = "-" * 70
+SEPARATOR = "─" * 60
 
 
 def clear_terminal() -> None:
@@ -42,22 +42,36 @@ def render_startup_header(
     No decide permisos, no llama al modelo y no ejecuta tools.
     """
 
-    console.print(SEPARATOR)
+    console.print()
+    console.print(f"[dim]{SEPARATOR}[/dim]")
+    console.print()
     
-    # Mascota ASCII de gato cyberpunk estilizada y premium exclusiva de MauCode
-    console.print("   [bold cyan]/\\____/\\[/bold cyan]")
-    console.print(f"  [bold cyan]/  [bold magenta]o[/bold magenta]  [bold magenta]o[/bold magenta]  \\[/bold cyan]   [bold magenta]MauCode[/bold magenta] · [bold white]{get_text('startup_subtitle')}[/bold white]")
-    console.print(f" [bold cyan](  [bold magenta]  ^  [/bold magenta]  )[/bold cyan]   [dim]{workspace_path}[/dim]")
-    console.print(f"  [bold cyan] \\ [bold magenta]---[/bold magenta] /[/bold cyan]    [dim]{get_text('startup_shortcuts_tip')}[/dim]")
+    # Logo: MauCode compacto, limpio y profesional
+    console.print("[bold #06B6D4]███╗   ███╗ █████╗ ██╗   ██╗[/bold #06B6D4]\t[bold #06B6D4] ██████╗ ██████╗ ██████╗ ███████╗[/bold #06B6D4]")
+    console.print("[bold #0891B2]████╗ ████║██╔══██╗██║   ██║[/bold #0891B2]\t[bold #0891B2]██╔════╝██╔═══██╗██╔══██╗██╔════╝[/bold #0891B2]")
+    console.print("[bold #0E7490]██╔████╔██║███████║██║   ██║[/bold #0E7490]\t[bold #0E7490]██║     ██║   ██║██║  ██║█████╗  [/bold #0E7490]")
+    console.print("[bold #22D3EE]██║╚██╔╝██║██╔══██║╚██████╔╝[/bold #22D3EE]\t[bold #22D3EE]╚██████╗╚██████╔╝██████╔╝███████╗[/bold #22D3EE]")
+
+    console.print("[dim italic]{subtitle}[/dim italic]".format(subtitle=get_text('startup_subtitle')))
+    console.print("[dim]📂 {workspace}[/dim]".format(workspace=workspace_path))
+    console.print(
+        "[bold #34D399]Grow[/bold #34D399] "
+        "[dim]→[/dim] "
+        "[bold #22D3EE]Code[/bold #22D3EE] "
+        "[dim]→[/dim] "
+        "[bold #A78BFA]Ship[/bold #A78BFA]  "
+        "[dim]{tip}[/dim]".format(tip=get_text('startup_shortcuts_tip'))
+    )
 
     console.print()
 
     if is_model_ready:
-        console.print(f"[bold green]✓[/bold green] {model_status}")
+        console.print(f"  [bold green]●[/bold green] {model_status}")
     else:
-        console.print(f"[bold red]✗[/bold red] {model_status}")
+        console.print(f"  [bold red]○[/bold red] {model_status}")
 
-    console.print(SEPARATOR)
+    console.print()
+    console.print(f"[dim]{SEPARATOR}[/dim]")
     render_compact_footer()
     console.print()
 
@@ -71,8 +85,8 @@ def render_compact_footer() -> None:
     modelo seleccionado, permisos o workspace activo.
     """
     console.print(
-        "[dim] ? for shortcuts | / for commands"
-        "                 MauCode | local[/dim]"
+        "[dim]  ? atajos  ·  / comandos  ·  Ctrl+C salir"
+        "                         [bold]MauCode[/bold][/dim]"
     )
 
 
@@ -83,7 +97,7 @@ def render_shortcuts_help() -> None:
     Esta pantalla no envía nada al modelo. Solo informa atajos.
     """
 
-    console.print(SEPARATOR)
+    console.print(f"[dim]{SEPARATOR}[/dim]")
 
     table = Table.grid(expand = True)
     table.add_column(ratio = 1)
@@ -98,16 +112,15 @@ def render_shortcuts_help() -> None:
 
     table.add_row(
         "[bold]/model[/bold] cambiar modelo",
-        "[bold]/help[/bold] mostrar atajos",
-        "[bold]salir[/bold] cerrar MauCode",
+        "[bold]/APIs[/bold] gestionar claves",
+        "[bold]Esc[/bold] cancelar generación",
     )
 
     table.add_row(
         "[bold]Ctrl+V[/bold] pegar texto",
-        "[bold]↑/↓[/bold] Navegar",
-        "[bold]Tab[/bold] Aceptar",
+        "[bold]↑/↓[/bold] historial",
+        "[bold]Tab[/bold] autocompletar",
     )
 
     console.print(table)
-    console.print(SEPARATOR)
-   
+    console.print(f"[dim]{SEPARATOR}[/dim]")

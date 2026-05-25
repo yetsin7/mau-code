@@ -1,4 +1,6 @@
-__pycache__
+__pycache__/
 *.pyc
 .maucode_history
 api-config.json
+.env
+*.env

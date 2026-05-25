@@ -167,9 +167,20 @@ MauCode no ejecuta acciones automáticamente. El modelo propone acciones estruct
 2. **Sí a todo**: aprueba todas las acciones sugeridas en este turno del modelo.
 3. **No, dime algo más**: deniega la acción propuesta.
 
-## Límites actuales
+## Carpeta de Pruebas Dedicada
 
-- Únicamente la herramienta `create_file` está conectada al flujo principal.
-- Las demás herramientas (`tools/git/*`, `tools/search/*`, etc.) son plantillas vacías en espera de implementación.
-- No hay persistencia de memoria de la sesión más allá del archivo de historial de comandos.
-- No hay pruebas automatizadas integradas.
+Para realizar las simulaciones y pruebas de creación, edición o lectura de archivos por parte de los modelos mediante APIs o localmente, se debe utilizar siempre esta carpeta:
+`C:\Users\Yetsin\Documents\Programacion\Ejercicios\Test-Mau-Code`
+
+## Persistencia de Sesión
+
+MauCode recuerda y restaura automáticamente el último modelo seleccionado de la sesión anterior (tanto de Ollama local como de APIs configuradas), guardando este estado localmente de forma segura en `api-config.json`.
+
+## Catálogo Completo de Herramientas (18 Tools Funcionales)
+
+Todas las 18 herramientas del catálogo están plenamente implementadas, conectadas al despachador general `core/action_executor.py` y descritas en el system prompt del modelo:
+- **Herramientas de Archivo (Filesystem):** `create_file`, `read_file`, `edit_file`, `delete_file`, `move_file`, `copy_file`, `rename_file`, `create_folder`, `delete_folder`, `list_files`.
+- **Herramientas de Estructura (Data):** `read_json`, `write_json`.
+- **Herramientas de Control de Versiones (Git):** `git_status`, `git_diff`, `git_commit`, `git_branch`.
+- **Herramientas de Búsqueda (Search):** `search_code`, `search_text`.
+

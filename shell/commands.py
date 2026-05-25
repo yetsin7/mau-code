@@ -66,7 +66,11 @@ def handle_internal_command(message: str) -> bool:
 
 def open_api_config() -> None:
     """
-    Importa dinámicamente y ejecuta la configuración interactiva de APIs de LLMs.
+    Importa y ejecuta la configuración interactiva de APIs de LLMs.
+
+    - El usuario puede agregar cualquier plataforma API con el nombre/apodo que desee y su propia API key.
+    - No existen plataformas predefinidas: todo lo que aparece fue creado por el usuario.
+    - La gestión es 100% personalizada y flexible.
     """
     api_commands = importlib.import_module("shell.api-commands")
     api_commands.configure_apis()
@@ -109,6 +113,10 @@ def select_model_with_arrows(
 ) -> str | None:
     """
     Muestra un selector interactivo de modelos.
+
+    - Todos los modelos (locales y API) muestran si soportan thinking (True/False) mediante la etiqueta [thinking].
+    - No existen modelos ni plataformas predefinidas: todo lo que aparece fue agregado por el usuario.
+    - El usuario puede distinguir fácilmente entre modelos locales y de API, y ver si tienen acceso a razonamiento avanzado.
 
     Controles:
     - Flecha arriba: modelo anterior.

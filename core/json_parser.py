@@ -20,9 +20,9 @@ def try_parse_json_actions(text: str):
 
     if fence_blocks:
         combined_text = "\n".join(fence_blocks)
+        return parse_multiple_json_objects(combined_text)
 
-    
-    # Si no hay bloques markdown, intentamos buscar objetos JSON en el texto:
+    # Si no hay bloques markdown, intentamos buscar objetos JSON en el texto plano:
     return parse_multiple_json_objects(text)
 
 
