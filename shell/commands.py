@@ -1,3 +1,4 @@
+import importlib
 from prompt_toolkit.application import Application
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import Layout
@@ -24,6 +25,9 @@ from core.model_client import (
     warm_up_model,
 )
 
+# Carga dinámica del gestor i18n con nombre kebab-case
+i18n_manager = importlib.import_module("core.i18n-manager")
+get_text = i18n_manager.get_text
 
 
 def handle_internal_command(message: str) -> bool:
@@ -45,6 +49,14 @@ def handle_internal_command(message: str) -> bool:
         open_model_selector()
         return True
     
+    if command == "/apis":
+        open_api_config()
+        return True
+
+    if command == "/APIs":
+        open_api_config()
+        return True
+    
     if command == "/ayuda":
         render_shortcuts_help()
         return True
@@ -52,6 +64,12 @@ def handle_internal_command(message: str) -> bool:
     return False
 
 
+def open_api_config() -> None:
+    """
+    Importa dinámicamente y ejecuta la configuración interactiva de APIs de LLMs.
+    """
+    api_commands = importlib.import_module("shell.api-commands")
+    api_commands.configure_apis()
 
 
 def toggle_thinking() -> None:
@@ -108,11 +126,11 @@ def select_model_with_arrows(
 
     def move_selection_up() -> None:
         nonlocal selected_index
-        selected_index = (selected_index -1) % len(installed_models)
+        selected_index = (selected_index - 1) % len(installed_models)
 
     def move_selection_down() -> None:
         nonlocal selected_index
-        selected_index = (selected_index +1) % len(installed_models)
+        selected_index = (selected_index + 1) % len(installed_models)
 
     @key_bindings.add("up")
     def handle_up(event):
@@ -140,7 +158,7 @@ def select_model_with_arrows(
         fragments = []
 
         fragments.append(("class:separator", f"{SEPARATOR}\n"))
-        fragments.append(("class:title", "Seleccionar modelo:\n\n"))
+        fragments.append(("class:title", f"{get_text('model_selector_title')}\n\n"))
 
         for index, model_name in enumerate(installed_models):
             is_selected = index == selected_index
@@ -148,34 +166,41 @@ def select_model_with_arrows(
 
             pointer = "❯" if is_selected else " "
             thinking_label = "  [thinking]" if thinking_support_by_model.get(model_name, False) else ""
-            current_label = "   (actual)" if is_current else ""
+            current_label = f"   {get_text('model_selector_current')}" if is_current else ""
+
+            # Etiquetado visual elegante y premium de modelos API vs Locales
+            if "/" in model_name:
+                provider_part, real_model_part = model_name.split("/", 1)
+                display_name = f"{real_model_part}   [API: {provider_part.upper()}]"
+            else:
+                display_name = f"{model_name}   [LOCAL]"
 
             if is_selected:
                 fragments.append(
                     (
                         "class:selected",
-                        f"{pointer} {index + 1}. {model_name}{thinking_label}{current_label}\n", 
+                        f"{pointer} {index + 1}. {display_name}{thinking_label}{current_label}\n", 
                     )
                 )
             elif is_current:
                 fragments.append(
                     (
                         "class:current",
-                        f"{pointer} {index + 1}. {model_name}{thinking_label}{current_label}\n",
+                        f"{pointer} {index + 1}. {display_name}{thinking_label}{current_label}\n",
                     )
                 )
             else:
                 fragments.append(
                     (
                         "",
-                        f"{pointer} {index + 1}. {model_name}{thinking_label}\n",
+                        f"{pointer} {index + 1}. {display_name}{thinking_label}\n",
                     )
                 )
         fragments.append(("", "\n"))
         fragments.append(
             (
                 "class:help",
-                "↑/↓ mover - Enter confirmar - Esc/Ctrl+C cancelar\n",
+                f"{get_text('model_selector_help')}\n",
             )
         )
         fragments.append(("class:separator", SEPARATOR))
@@ -218,7 +243,7 @@ def select_model_with_arrows(
 
 def open_model_selector() -> None:
     """
-    Abre un selector interactivo para elegir un modelo instalado.
+    Abre un selector interactivo para elegir un modelo instalado (local o de API).
 
     Usa flechas para moverse y Enter para confirmar.
     Al terminar, limpia la terminal y vuelve a mostrar la interfaz principal.
@@ -227,14 +252,14 @@ def open_model_selector() -> None:
     installed_models = list_installed_ollama_models()
 
     if not installed_models:
-        console.print("[bold red]No hay modelos instalados en Ollama.[/bold red]")
-        console.print("[yellow]Puedes instalar uno con:[/yellow] ollama pull qwen3:8b")
+        console.print("[bold red]No hay modelos locales instalados en Ollama ni APIs configuradas.[/bold red]")
+        console.print("[yellow]Puedes configurar una API escribiendo:[/yellow] /APIs")
         return
     
     current_model = get_current_model()
 
     with console.status(
-        "[bold cyan]Detectando modelos con thinking...[/bold cyan]",
+        "[bold cyan]Detectando modelos compatibles...[/bold cyan]",
         spinner = "dots",
     ):
         thinking_support_by_model = detect_thinking_support_for_all_models(installed_models)
@@ -249,18 +274,18 @@ def open_model_selector() -> None:
 
     if selected_model is None:
         clear_terminal()
-        console.print("[bold yellow]Selección de modelo cancelada.[/bold yellow]")
+        console.print(get_text("model_selection_canceled"))
         return
     
     if selected_model == current_model:
         clear_terminal()
-        console.print(f"[dim]Modelo actual: {current_model}[/dim]")
+        console.print(get_text("model_actual_label", model=current_model))
         return    
 
     set_current_model(selected_model)
 
     with console.status(
-        f"[bold cyan]Iniciando modelo {selected_model}...[/bold cyan]",
+        get_text("warming_up", model=selected_model),
         spinner = "dots",
     ):
         is_ready, message = warm_up_model(selected_model)
@@ -272,5 +297,6 @@ def open_model_selector() -> None:
             console.print(f"[bold green]✓[/bold green] {message}")
     else:
         console.print(f"[bold red]✗[/bold red] {message}")
+
 
 

@@ -191,6 +191,7 @@ def write_folder_structure_file(relative_folder: Path, files: list[Path]) -> Non
                 out.write(f"*Error al leer el archivo: {error}*\n\n")
 
 
+
 def main() -> None:
     """
     Genera una carpeta ESTRUCTURA con un archivo .md por cada carpeta del proyecto.

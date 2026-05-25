@@ -31,6 +31,14 @@ INTERNAL_COMMANDS = {
         "description": "Ayuda con atajos disponibles",
         "alias_of": None,
     },
+    "/apis": {
+        "description": "Configurar APIs de modelos",
+        "alias_of": "/APIs",
+    },
+    "/APIs": {
+        "description": "Configurar APIs de modelos",
+        "alias_of": None,
+    },
     "/exit": {
         "description": "Cerrar MauCode",
         "alias_of": "/salir",

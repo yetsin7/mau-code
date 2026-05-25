@@ -1,336 +1,165 @@
-import ollama  # Cliente para comunicarnos con Ollama.
 import re
+import ollama
+import importlib
 from prompts.system_prompt import SYSTEM_PROMPT
 
+# Carga dinámica de módulos con nombres kebab-case (obligatorios por reglas del proyecto)
+ollama_service = importlib.import_module("core.ollama-service")
+PREFERRED_MODEL_NAME = ollama_service.PREFERRED_MODEL_NAME
+MODEL_KEEP_ALIVE = ollama_service.MODEL_KEEP_ALIVE
+list_local_ollama_models = ollama_service.list_installed_ollama_models
+unload_local_model = ollama_service.unload_model
+detect_thinking_support_for_one_model = ollama_service.detect_thinking_support_for_one_model
+detect_local_thinking_support = ollama_service.detect_thinking_support_for_all_models
+warm_up_local_model = ollama_service.warm_up_local_model
 
-# Modelo preferido con thinking:
-PREFERRED_MODEL_NAME = "qwen3:8b"
+api_manager = importlib.import_module("core.api-manager")
+get_api_models = api_manager.get_api_models
+get_api_key_for_model = api_manager.get_api_key_for_model
+make_http_request = api_manager.make_http_request
 
-# Tiempo que Ollama mantendrá el modelo cargado en memoria
-# después de usarlo
-MODEL_KEEP_ALIVE = "5m"
 
 # Modelo actualmente seleccionado durante MauCode.
-# Empieza vacío porque MauCode debe detectar los modelos instalados, y debe dar instrucciones en caso que no: 
 current_model_name = None
 
+# Preferencia de thinking activada por el usuario
 thinking_enabled = False
 
-# Caché de capacidades por modelo.
-# True = el modelo acepta el parámetro think.
-# False = el modelo no acepta thinking:
-model_thinking_support_cache = {}
-
-
-
-def list_installed_ollama_models() -> list[str]:
-    """
-    Lee los modelos instalados localmente en Ollama.
-
-    MauCode no debe depender de una lista fija escrita en código.
-    En su lugar, consulta Ollama y obtiene la lista real de modelos
-    disponibles en la computadora del usuario.
-    """
-   
-    response = ollama.list()
-
-    if isinstance(response, dict):
-       raw_models = response.get("models", [])
-    else:
-        raw_models = getattr(response, "models", [])
-
-    installed_models = []
-
-    for model in raw_models:
-        if isinstance(model, dict):
-            model_name = model.get("model") or model.get("name")
-        else: 
-            model_name = getattr(model, "model", None) or getattr(model, "name", None)
-
-        if model_name:
-            installed_models.append(model_name)
-
-    return installed_models
-
-
-
 def select_default_model() -> str:
-
     """
     Selecciona automáticamente el mejor modelo disponible.
-
-    Regla actual:
-    - Si qwen3:8b está instalado, se usa por defecto.
-    - Si qwen3:8b no está instalado, se usa el primer modelo instalado.
-    - Si no hay modelos instalados, se lanza un error claro.
+    Prioriza qwen3:8b local, luego otros locales, y finalmente modelos por API.
     """
+    try:
+        installed_models = list_local_ollama_models()
+        if PREFERRED_MODEL_NAME in installed_models:
+            return PREFERRED_MODEL_NAME
+        if installed_models:
+            return installed_models[0]
+    except Exception:
+        pass
 
-    installed_models = list_installed_ollama_models()
+    api_models = get_api_models()
+    if api_models:
+        return api_models[0]
 
-    if not installed_models:
-        raise RuntimeError(
-            "No hay modelos instalados en Ollama. Instala uno con: ollama pull qwen3:8b"
-        )
-    
-    if PREFERRED_MODEL_NAME in installed_models:
-        return PREFERRED_MODEL_NAME
-    
-    return installed_models[0]
-
-
+    raise RuntimeError(
+        "No hay modelos locales instalados en Ollama ni APIs configuradas.\n"
+        "Instala un modelo local ('ollama pull qwen3:8b') o configura una API con '/APIs'."
+    )
 
 def initialize_model() -> str:
     """
     Inicializa el modelo activo de MauCode.
-
-    Esta función se llama al inicio del programa para que MauCode elija
-    automáticamente un modelo antes de que el usuario mande su primer mensaje.
     """
-
     global current_model_name
-
     current_model_name = select_default_model()
-
     return current_model_name
-
-
 
 def get_current_model() -> str:
     """
     Devuelve el modelo actualmente activo.
-
-    Si todavía no hay modelo seleccionado, lo inicializa automáticamente.
-    Esto evita que ask_ollama falle por no tener modelo configurado.
     """
-
     global current_model_name
-
     if current_model_name is None:
         current_model_name = select_default_model()
-
     return current_model_name
 
-
-
-
-def unload_model(model_name: str) -> tuple[bool, str]:
-    """
-    Descarga un modelo de la memoria de Ollama usando keep_alive=0.
-
-    Esto ayuda a que al cambiar de modelo no quede el anterior activo
-    consumiendo memoria.
-    """
-
-    try:
-        ollama.generate(
-            model=model_name,
-            prompt="",
-            keep_alive=0,
-            options={
-                "num_predict": 0,
-            },
-        )
-
-        return True, f"Modelo descargado: {model_name}"
-
-    except Exception as error:
-        return False, f"No se pudo descargar el modelo {model_name}: {error}"
-
-
-
 def set_current_model(model_name: str) -> None:
-
     """
     Cambia el modelo activo de MauCode durante la sesión actual.
-
-    Si había un modelo anterior distinto, intenta descargarlo de memoria.
-    Si el nuevo modelo no soporta thinking, se desactiva la preferencia
-    de thinking para evitar errores al chatear.
     """
-
     global current_model_name
     global thinking_enabled
 
     old_model = current_model_name
-
-    if old_model and old_model != model_name:
-        unload_model(old_model)
-
     current_model_name = model_name
+
+    # Si cambiamos de un modelo local de Ollama a otro, descargamos el anterior
+    if old_model and old_model != model_name and "/" not in old_model:
+        try:
+            unload_local_model(old_model)
+        except Exception:
+            pass
 
     if not model_supports_thinking(model_name):
         thinking_enabled = False
 
-
-
 def get_thinking_enabled() -> bool:
     """
-    Devuelve si MauCode debe pedir thinking a los modelos compatibles.
+    Devuelve si el usuario activó la opción de thinking.
     """
-
     return thinking_enabled
-
-
 
 def set_thinking_enabled(value: bool) -> None:
     """
     Activa o desactiva el uso de thinking en modelos compatibles.
     """
     global thinking_enabled
+    thinking_enabled = value
 
-    thinking_enabled = value   
-
-
-
-def is_thinking_not_supported_error(error: Exception) -> bool:
+def list_installed_ollama_models() -> list[str]:
     """
-    Detecta errores de Ollama cuando un modelo no soporta thinking.
-
-    Algunos modelos devuelven HTTP 400 si se les envía think=True.
-    MauCode debe detectar eso, guardar la capacidad del modelo y seguir
-    chateando normalmente sin thinking.
+    Retorna una lista combinada de los modelos locales de Ollama y los configurados por API.
     """
-    error_text = str (error).lower()
-
-    return  (
-        "does not support thinking" in error_text
-        or "thinking is not supported" in error_text
-        or "think is not supported" in error_text
-    )
-
-def detect_thinking_support_for_one_model(
-        model_name: str, 
-        force: bool = False,
-    ) -> bool:
-
-    """
-    Detecta si un modelo específico acepta el parámetro think de Ollama.
-
-    La prueba se guarda en caché para no repetirla innecesariamente.
-    Usamos keep_alive=0 para no dejar cargados en memoria todos los
-    modelos que se revisan en el selector.
-    """
-
-    if not force and model_name in model_thinking_support_cache:
-        return model_thinking_support_cache[model_name]
-    
+    local_models = []
     try:
-        ollama.chat(
-            model = model_name,
-            messages = [
-                {
-                    "role": "user",
-                    "content": "Responde solo: OK", 
-                }
-                
-            ],
-            think = True,
-            options = {
-                "num_predict": 1,
-            },
-            keep_alive = 0,
-        )
+        local_models = list_local_ollama_models()
+    except Exception:
+        pass
+    api_models = get_api_models()
+    return local_models + api_models
 
-        model_thinking_support_cache[model_name] = True
-        return True
-    
-    except TypeError:
-        # La versión instalada de ollama-python no acepta el parámetro think:
-        model_thinking_support_cache[model_name] = False
-        return False
-    
-    except Exception as error:
-        if is_thinking_not_supported_error(error):
-            model_thinking_support_cache[model_name] = False
-            return False
-        
-        # Si el error es otro, no fingimos que el modelo no soporta thinking.
-        # Dejamos que el error real suba para poder verlo:
-        raise
-
-
-
-def detect_thinking_support_for_all_models(
-    model_name: list[str],
-) -> dict[str, bool]:
-
+def detect_thinking_support_for_all_models(models_list: list[str]) -> dict[str, bool]:
     """
-    Detecta qué modelos de una lista soportan thinking.
-
-    Retorna un diccionario como:
-
-    {
-        "qwen3:8b": True,
-        "opencoder:8b": False,
-    }
+    Detecta el soporte de thinking para una lista de modelos (locales y de API).
+    Los modelos de API devuelven False para la implementación de Ollama.
     """
+    local_models = [m for m in models_list if "/" not in m]
+    api_models = [m for m in models_list if "/" in m]
 
-    thinking_support_by_model = {}
+    thinking_support = {}
+    if local_models:
+        thinking_support = detect_local_thinking_support(local_models)
+    
+    for m in api_models:
+        thinking_support[m] = False
 
-    for model_name in model_name:
-        try:
-            thinking_support_by_model[model_name] = detect_thinking_support_for_one_model(
-                model_name
-            )
-            
-        except Exception as error:
-            # En el selector solo mostramos la etiqueta [thinking]
-            # Cuando la capacidad fue confirmada correctamente:
-            thinking_support_by_model[model_name] = False
-        
-    return thinking_support_by_model
-
-
+    return thinking_support
 
 def model_supports_thinking(model_name: str | None = None) -> bool:
     """
-    Devuelve si el modelo indicado, o el modelo actual, soporta thinking.
+    Devuelve si el modelo indicado, o el modelo actual, soporta thinking local.
     """
     selected_model = model_name or get_current_model()
-
-    return detect_thinking_support_for_one_model(selected_model)
-
-   
+    if "/" in selected_model:
+        return False
+    try:
+        return detect_thinking_support_for_one_model(selected_model)
+    except Exception:
+        return False
 
 def get_model_thinking_label(model_name: str) -> str:
     """
     Devuelve la etiqueta visual para el selector de modelos.
     """
-
     if model_supports_thinking(model_name):
         return "    [thinking]"
-    
     return ""
 
-
 def should_use_thinking_for_chat(model_name: str | None = None) -> bool:
-
     """
-    Devuelve True solo si:
-    - el usuario activó thinking;
-    - el modelo actual soporta thinking.
+    Devuelve True si el usuario activó thinking y el modelo lo soporta.
     """
-
     selected_model = model_name or get_current_model()
-
     return get_thinking_enabled() and model_supports_thinking(selected_model)
-
-
 
 def split_inline_thinking(content: str) -> tuple[str, str]:
     """
-    Extrae bloques <think>...</think> cuando un modelo viejo
-    devuelve el razonamiento dentro del contenido principal.
-
-    Retorna:
-    - thinking
-    - final_content
+    Extrae bloques <think>...</think> de las respuestas de los modelos.
     """
-
-    import os
-
     pattern = r"<think>(.*?)</think>"
-    matches = re.findall(pattern, content, flags = re.DOTALL | re.IGNORECASE)    
+    matches = re.findall(pattern, content, flags=re.DOTALL | re.IGNORECASE)    
 
     if not matches:
         return "", content
@@ -340,24 +169,122 @@ def split_inline_thinking(content: str) -> tuple[str, str]:
         pattern,
         "",
         content,
-        flags = re.DOTALL | re.IGNORECASE,
+        flags=re.DOTALL | re.IGNORECASE,
     ).strip()
 
     return thinking, final_content
 
+def ask_api_model(model_name: str, conversation_messages: list[dict]) -> dict:
+    """
+    Realiza la llamada de chat completion para los proveedores de API externos.
+    """
+    provider, real_model, api_key = get_api_key_for_model(model_name)
+    if not provider or not api_key:
+        raise RuntimeError(f"No se encontró clave de API configurada para el modelo: {model_name}")
 
+    # Estructuramos el historial con el prompt de sistema
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        *conversation_messages
+    ]
+
+    content = ""
+    
+    if provider == "openai":
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        body = {
+            "model": real_model,
+            "messages": messages
+        }
+        _, response = make_http_request(url, headers=headers, method="POST", body_data=body)
+        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+    elif provider == "anthropic":
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        
+        # Anthropic requiere extraer el system prompt a un campo raíz independiente
+        anthropic_messages = []
+        system_text = SYSTEM_PROMPT
+        
+        for msg in conversation_messages:
+            if msg["role"] == "system":
+                system_text = msg["content"]
+            else:
+                anthropic_messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"]
+                })
+                
+        body = {
+            "model": real_model,
+            "system": system_text,
+            "messages": anthropic_messages,
+            "max_tokens": 4096
+        }
+        _, response = make_http_request(url, headers=headers, method="POST", body_data=body)
+        content = response.get("content", [{}])[0].get("text", "")
+
+    elif provider == "gemini":
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{real_model}:generateContent?key={api_key}"
+        
+        # Mapeamos los mensajes al formato de contenido de Gemini
+        contents = []
+        for msg in conversation_messages:
+            if msg["role"] == "system":
+                continue
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg["content"]}]
+            })
+            
+        body = {
+            "contents": contents,
+            "systemInstruction": {
+                "parts": [{"text": SYSTEM_PROMPT}]
+            }
+        }
+        _, response = make_http_request(url, method="POST", body_data=body)
+        content = response.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+
+    elif provider == "groq":
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        body = {
+            "model": real_model,
+            "messages": messages
+        }
+        _, response = make_http_request(url, headers=headers, method="POST", body_data=body)
+        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+    else:
+        raise RuntimeError(f"Proveedor de API no soportado: {provider}")
+
+    # Extraemos bloques de pensamiento si existen en el contenido devuelto
+    thinking, final_content = split_inline_thinking(content)
+    
+    return {
+        "content": final_content.strip(),
+        "thinking": thinking.strip(),
+    }
 
 def ask_ollama(conversation_messages: list[dict]) -> dict:
     """
-    Envía la conversación completa al modelo local de Ollama.
-
-    Retorna:
-    - content: respuesta final del modelo.
-    - thinking: razonamiento separado, si el modelo lo soporta y está activo.
+    Envía la conversación al modelo activo, redirigiendo a la API o a Ollama local.
     """
-
     selected_model = get_current_model()
 
+    # Si es un modelo configurado por API, lo redirigimos
+    if "/" in selected_model:
+        return ask_api_model(selected_model, conversation_messages)
+
+    # Si es local, lo procesamos con el cliente de Ollama estándar
     messages = [
         {
             "role": "system",
@@ -371,36 +298,30 @@ def ask_ollama(conversation_messages: list[dict]) -> dict:
     try:
         if supports_thinking:
             response = ollama.chat(
-                model = selected_model,
-                messages = messages,
-                think = get_thinking_enabled(),
-                keep_alive = MODEL_KEEP_ALIVE,
+                model=selected_model,
+                messages=messages,
+                think=get_thinking_enabled(),
+                keep_alive=MODEL_KEEP_ALIVE,
             )
         else:
             response = ollama.chat(
-                model = selected_model,
-                messages = messages,
-                keep_alive = MODEL_KEEP_ALIVE,
+                model=selected_model,
+                messages=messages,
+                keep_alive=MODEL_KEEP_ALIVE,
             )
-
     except TypeError:
-        # Compatibilidad con versiones viejas de oolama-python
-        # que todavía no acepten el parámetro thinkL
         response = ollama.chat(
-            model = selected_model,
-            messages = messages,
-            keep_alive = MODEL_KEEP_ALIVE,
+            model=selected_model,
+            messages=messages,
+            keep_alive=MODEL_KEEP_ALIVE,
         )
-
     except Exception as error:
-        if supports_thinking and is_thinking_not_supported_error(error):
-            model_thinking_support_cache[selected_model] = False
+        if supports_thinking and "does not support thinking" in str(error).lower():
             set_thinking_enabled(False)
-
             response = ollama.chat(
-                model = selected_model,
-                messages = messages,
-                keep_alive = MODEL_KEEP_ALIVE,
+                model=selected_model,
+                messages=messages,
+                keep_alive=MODEL_KEEP_ALIVE,
             )
         else:
             raise
@@ -420,45 +341,17 @@ def ask_ollama(conversation_messages: list[dict]) -> dict:
     if not thinking:
         thinking, content = split_inline_thinking(content)
 
-    return  {
+    return {
         "content": content.strip(),
         "thinking": thinking.strip(),
     }
 
-
-
 def warm_up_model(model_name: str | None = None) -> tuple[bool, str]:
     """
-    Carga el modelo en memoria al iniciar MauCode o al cambiar de modelo.
-
-    Si model_name viene vacío:
-    - MauCode usa el modelo activo.
-    - Si no hay modelo activo, selecciona automáticamente uno.
+    Carga el modelo en memoria local si es local, o valida su disponibilidad si es de API.
     """
-
-    try:
-
-        selected_model = model_name or get_current_model()
-
-        ollama.chat(
-            model = selected_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Responde únicamente con ¡Hola, estoy listo!",
-                },
-                {
-                    "role": "user",
-                    "content": "OK",
-                },
-            ],
-            options={
-                "num_predict": 1,
-            },
-            keep_alive = MODEL_KEEP_ALIVE,
-        )
-
-        return True, f"Modelo listo: {selected_model}"
+    selected_model = model_name or get_current_model()
+    if "/" in selected_model:
+        return True, f"Modelo de API listo: {selected_model}"
     
-    except Exception as error:
-        return False, f"No se pudeo iniciar el modelo: { error }"
+    return warm_up_local_model(selected_model)
